@@ -1,0 +1,62 @@
+{
+  "name": "conectalog-suporte",
+  "version": "1.0.0",
+  "description": "Sistema de suporte interno para a ConectaLog, permitindo abertura de chamados e gerenciamento pela equipe de TI.",
+  "main": "src/app.ts",
+  "scripts": {
+    "dev:web": "vite --host --port 5173",
+    "dev:api": "ts-node server/index.ts",
+    "dev": "npm run dev:web",
+    "dev:full": "concurrently \"npm run dev:web\" \"npm run dev:api\"",
+    "start": "npm run dev:api",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/usuario/conectalog-suporte.git"
+  },
+  "keywords": [
+    "suporte",
+    "chamados",
+    "conectalog",
+    "supabase"
+  ],
+  "author": "Seu Nome",
+  "license": "MIT",
+  "dependencies": {
+    "@chakra-ui/react": "^2.10.9",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@supabase/supabase-js": "^2.75.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "framer-motion": "^10.18.0",
+    "openai": "^4.56.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^6.21.3",
+    "styled-components": "^6.1.19"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.11",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@types/styled-components": "^5.1.34",
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.4.20"
+  }
+}
