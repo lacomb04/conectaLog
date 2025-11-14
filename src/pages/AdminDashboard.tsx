@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../services/supabaseClient";
-import TicketList from "../components/TicketList";
 import SupportDashboard from "./SupportDashboard";
 import { useNavigate } from "react-router-dom";
 

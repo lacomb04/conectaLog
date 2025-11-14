@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
-import { Ticket } from '../types';
+import { Ticket, TicketComment } from '../types';
 
 const TicketDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const [ticket, setTicket] = useState<Ticket | null>(null);
     const [loading, setLoading] = useState(true);
     const [comments, setComments] = useState<string>('');
+    const [ticketComments, setTicketComments] = useState<TicketComment[]>([]);
 
     useEffect(() => {
         const fetchTicket = async () => {
@@ -21,6 +22,18 @@ const TicketDetail: React.FC = () => {
                 console.error('Error fetching ticket:', error);
             } else {
                 setTicket(data);
+                const { data: commentData, error: commentError } = await supabase
+                    .from('comments')
+                    .select('*')
+                    .eq('ticket_id', id)
+                    .order('created_at', { ascending: true });
+
+                if (commentError) {
+                    console.error('Error fetching comments:', commentError);
+                    setTicketComments([]);
+                } else {
+                    setTicketComments(commentData ?? []);
+                }
             }
             setLoading(false);
         };
@@ -40,7 +53,17 @@ const TicketDetail: React.FC = () => {
             console.error('Error adding comment:', error);
         } else {
             setComments('');
-            // Optionally, fetch comments again to update the view
+            const { data: commentData, error: commentError } = await supabase
+                .from('comments')
+                .select('*')
+                .eq('ticket_id', id)
+                .order('created_at', { ascending: true });
+
+            if (commentError) {
+                console.error('Error fetching comments:', commentError);
+            } else {
+                setTicketComments(commentData ?? []);
+            }
         }
     };
 
@@ -53,11 +76,11 @@ const TicketDetail: React.FC = () => {
             <h2>Ticket Detail</h2>
             <h3>{ticket.title}</h3>
             <p>Status: {ticket.status}</p>
-            <p>Importance: {ticket.importance}</p>
+            <p>Prioridade: {ticket.priority ?? 'N/A'}</p>
             <p>Description: {ticket.description}</p>
             <h4>Comments</h4>
             <ul>
-                {ticket.comments.map((comment) => (
+                {ticketComments.map((comment) => (
                     <li key={comment.id}>{comment.content}</li>
                 ))}
             </ul>

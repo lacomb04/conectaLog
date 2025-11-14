@@ -36,8 +36,13 @@ const TicketList: React.FC = () => {
                     <li key={ticket.id}>
                         <h3>{ticket.title}</h3>
                         <p>Status: {ticket.status}</p>
-                        <p>Importância: {ticket.importance}</p>
-                        <p>Data de Abertura: {new Date(ticket.created_at).toLocaleString()}</p>
+                        <p>Prioridade: {ticket.priority ?? 'N/A'}</p>
+                        <p>
+                            Data de Abertura:{' '}
+                            {ticket.created_at
+                                ? new Date(ticket.created_at).toLocaleString()
+                                : '—'}
+                        </p>
                         <a href={`/tickets/${ticket.id}`}>Ver Detalhes</a>
                     </li>
                 ))}

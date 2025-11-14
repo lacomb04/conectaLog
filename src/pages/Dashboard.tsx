@@ -14,7 +14,6 @@ import {
   Td,
   Badge,
   Heading,
-  Flex,
 } from '@chakra-ui/react'
 
 const Dashboard: React.FC = () => {

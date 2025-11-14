@@ -21,7 +21,6 @@ import {
   Progress,
   Divider,
   Input,
-  IconButton,
 } from '@chakra-ui/react';
 
 interface Message {
