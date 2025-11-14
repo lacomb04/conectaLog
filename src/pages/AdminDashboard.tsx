@@ -205,7 +205,7 @@ const AdminDashboard: React.FC<{ searchTerm?: string }> = ({
   if (loading) return <div>Loading...</div>;
   if (!user) return <div>Nenhum usuário autenticado.</div>;
 
-  const headerActions = (
+  const headerActions = React.useMemo(() => (
     <>
       <button
         onClick={() => navigate("/bi")}
@@ -236,7 +236,7 @@ const AdminDashboard: React.FC<{ searchTerm?: string }> = ({
         Alimentar ConectaBot
       </button>
     </>
-  );
+  ), [navigate]);
 
   return (
     <>

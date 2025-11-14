@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
+/** @typedef {import("react").ReactNode} ReactNode */
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import supabase from "../../supabaseClient";
@@ -423,7 +424,7 @@ function SortableTicket({
 export default function SupportDashboard({
   user,
   searchTerm = "",
-  extraHeaderActions = null
+  /** @type {ReactNode | null | undefined} */ extraHeaderActions = null
 }) {
   const [tickets, setTickets] = useState([]);
   const [usersMap, setUsersMap] = useState({});
