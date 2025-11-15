@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
 import styled from "styled-components";
 import supabase from "../../supabaseClient";
@@ -45,6 +45,30 @@ const STATUS_OPTIONS = [
   { value: "resolved", label: "Resolvido" },
   { value: "closed", label: "Fechado" },
 ];
+
+const ASSET_STATUS_META = {
+  "em uso": { tone: "success", label: "Em uso" },
+  "em manutenção": { tone: "warning", label: "Em manutenção" },
+  planejado: { tone: "info", label: "Planejado" },
+  obsoleto: { tone: "danger", label: "Obsoleto" },
+};
+
+const ASSET_LIFECYCLE_LABELS = {
+  acquisition: "Aquisição",
+  deployment: "Implantação",
+  use: "Uso",
+  maintenance: "Manutenção",
+  disposal: "Descarte",
+};
+
+const ASSET_CATEGORY_LABELS = {
+  hardware: "Hardware",
+  software: "Software",
+  network: "Rede",
+  peripherals: "Periféricos",
+  licenses: "Licenças",
+  mobile: "Dispositivos móveis",
+};
 
 const Tile = styled(Card)`
   width: 100%;
@@ -443,6 +467,10 @@ export default function SupportDashboard({
   const [supportUsers, setSupportUsers] = useState([]);
   const [showAIChat, setShowAIChat] = useState(false); // + estado chat IA
   const [showTeamChat, setShowTeamChat] = useState(false);
+  const [assignedAssets, setAssignedAssets] = useState([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const [assetsError, setAssetsError] = useState("");
+  const assetsMountedRef = useRef(true);
 
   const chatButtons = [
     {
@@ -487,6 +515,71 @@ export default function SupportDashboard({
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    assetsMountedRef.current = true;
+    return () => {
+      assetsMountedRef.current = false;
+    };
+  }, []);
+
+  const fetchAssignedAssets = useCallback(async () => {
+    if (!assetsMountedRef.current) {
+      return;
+    }
+
+    if (!user?.id) {
+      setAssignedAssets([]);
+      setAssetsError("");
+      setAssetsLoading(false);
+      return;
+    }
+
+    setAssetsLoading(true);
+    setAssetsError("");
+    try {
+      const { data, error } = await supabase
+        .from("assets")
+        .select(
+          [
+            "id",
+            "asset_code",
+            "name",
+            "category",
+            "status",
+            "lifecycle_stage",
+            "last_maintenance_date",
+            "next_maintenance_date",
+            "license_expiry",
+            "inventoried",
+            "location",
+            "acquisition_date",
+          ].join(",")
+        )
+        .eq("support_owner", user.id)
+        .order("name", { ascending: true });
+
+      if (!assetsMountedRef.current) return;
+
+      if (error) {
+        console.error("Erro ao carregar ativos do suporte:", error);
+        setAssetsError("Não foi possível carregar os ativos: " + error.message);
+        setAssignedAssets([]);
+      } else {
+        setAssignedAssets(data || []);
+      }
+    } catch (cause) {
+      console.error("Erro inesperado ao buscar ativos:", cause);
+      if (assetsMountedRef.current) {
+        setAssetsError("Erro inesperado ao buscar os ativos atribuídos.");
+        setAssignedAssets([]);
+      }
+    } finally {
+      if (assetsMountedRef.current) {
+        setAssetsLoading(false);
+      }
+    }
+  }, [user?.id]);
+
   const formatDuration = (ms) => {
     if (ms <= 0) return "00:00:00";
     const totalSeconds = Math.floor(ms / 1000);
@@ -499,6 +592,13 @@ export default function SupportDashboard({
     return `${hours}:${minutes}:${seconds}`;
   };
 
+  const formatAssetDate = useCallback((value) => {
+    if (!value) return "—";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "—";
+    return parsed.toLocaleDateString("pt-BR");
+  }, []);
+
   useEffect(() => {
     if (!user?.id) return;
     (async () => {
@@ -509,6 +609,10 @@ export default function SupportDashboard({
       setSupportUsers((data || []).filter((u) => u.id !== user.id));
     })();
   }, [user?.id]);
+
+  useEffect(() => {
+    fetchAssignedAssets();
+  }, [fetchAssignedAssets]);
 
   useEffect(() => {
     if (!user?.id) return;

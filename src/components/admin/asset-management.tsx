@@ -4,7 +4,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import styled from "styled-components";
@@ -14,6 +13,13 @@ import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 import Select from "../ui/Select";
 import { Input, TextArea } from "../ui/Input";
+
+const RAW_API_BASE = (import.meta.env?.VITE_API_BASE_URL || "").trim();
+const API_BASE_URL = RAW_API_BASE.endsWith("/")
+  ? RAW_API_BASE.slice(0, -1)
+  : RAW_API_BASE;
+const apiUrl = (path: string) =>
+  API_BASE_URL ? `${API_BASE_URL}${path}` : path;
 
 type AssetCategory =
   | "hardware"
@@ -71,6 +77,12 @@ type AssetRecord = {
   location?: string | null;
   inventoried: boolean;
   support_owner: string | null;
+  support_owner_profile?: {
+    id: string;
+    full_name?: string | null;
+    email?: string | null;
+    role?: string | null;
+  } | null;
 };
 
 type AssetFormState = {
@@ -388,7 +400,6 @@ const AssetManagement: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [ownersMap, setOwnersMap] = useState<Record<string, OwnerInfo>>({});
-  const ownersMapRef = useRef<Record<string, OwnerInfo>>({});
   const [formState, setFormState] = useState<AssetFormState>({
     ...DEFAULT_FORM_STATE,
   });
@@ -397,9 +408,6 @@ const AssetManagement: React.FC = () => {
     useState<"idle" | "success" | "error">("idle");
   const [formMessage, setFormMessage] = useState("");
 
-  useEffect(() => {
-    ownersMapRef.current = ownersMap;
-  }, [ownersMap]);
 
   const fetchAssets = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -411,89 +419,87 @@ const AssetManagement: React.FC = () => {
       }
       setErrorMessage("");
       try {
-        const { data, error } = await supabase
-          .from("assets")
-          .select(
-            [
-              "id",
-              "asset_code",
-              "name",
-              "category",
-              "subcategory",
-              "description",
-              "quantity",
-              "status",
-              "lifecycle_stage",
-              "acquisition_date",
-              "last_maintenance_date",
-              "next_maintenance_date",
-              "warranty_expires_at",
-              "license_expiry",
-              "location",
-              "inventoried",
-              "support_owner",
-            ].join(",")
-          )
-          .order("category", { ascending: true })
-          .order("name", { ascending: true });
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
 
-        if (error) {
-          console.warn("[AssetManagement] fetchAssets:", error.message);
+        if (sessionError) {
+          console.warn(
+            "[AssetManagement] getSession:",
+            sessionError.message
+          );
+        }
+
+        const token = sessionData?.session?.access_token;
+        if (!token) {
           setErrorMessage(
-            "Não foi possível carregar os ativos: " + error.message
+            "Sessão expirada. Faça login novamente para visualizar os ativos."
           );
           setAssets([]);
-        } else {
-          const normalized = (data ?? []).map((item: any) => {
-            const quantity =
-              typeof item.quantity === "number" && item.quantity > 0
-                ? item.quantity
-                : 1;
-            return {
-              ...item,
-              quantity,
-              inventoried: Boolean(item.inventoried),
-            } as AssetRecord;
-          });
-          const ownerIds = Array.from(
-            new Set(
-              normalized
-                .map((asset) => asset.support_owner)
-                .filter((value): value is string => Boolean(value))
-            )
-          );
-          const missingOwnerIds = ownerIds.filter(
-            (id) => !ownersMapRef.current[id]
-          );
-          if (missingOwnerIds.length) {
-            const { data: ownersData, error: ownersError } = await supabase
-              .from("users")
-              .select("id, full_name, email")
-              .in("id", missingOwnerIds);
-            if (ownersError) {
-              console.warn(
-                "[AssetManagement] owners lookup:",
-                ownersError.message
-              );
-            } else if (ownersData?.length) {
-              setOwnersMap((prev) => {
-                const next = { ...prev };
-                ownersData.forEach((owner: any) => {
-                  next[owner.id] = {
-                    full_name:
-                      typeof owner.full_name === "string" &&
-                      owner.full_name.trim()
-                        ? owner.full_name.trim()
-                        : owner.email || null,
-                    email: owner.email || null,
-                  };
-                });
-                return next;
-              });
-            }
-          }
-          setAssets(normalized);
+          return;
         }
+
+        const response = await fetch(apiUrl("/api/assets"), {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          let detail: any = null;
+          try {
+            detail = await response.json();
+          } catch (_ignore) {
+            detail = null;
+          }
+          const message = detail?.error || `Status ${response.status}`;
+          console.warn("[AssetManagement] fetchAssets:", message);
+          setErrorMessage("Não foi possível carregar os ativos: " + message);
+          setAssets([]);
+          return;
+        }
+
+        let payload: { data?: unknown } | null = null;
+        try {
+          payload = await response.json();
+        } catch (_ignore) {
+          payload = null;
+        }
+
+        const rawData = payload?.data;
+        const items: AssetRecord[] = Array.isArray(rawData)
+          ? (rawData as AssetRecord[])
+          : [];
+        const ownersBuffer: Record<string, OwnerInfo> = {};
+
+        const normalized = items.map((item) => {
+          const quantity =
+            typeof item.quantity === "number" && item.quantity > 0
+              ? item.quantity
+              : 1;
+          const ownerProfile = item.support_owner_profile;
+          if (ownerProfile?.id) {
+            ownersBuffer[ownerProfile.id] = {
+              full_name:
+                typeof ownerProfile.full_name === "string" &&
+                ownerProfile.full_name.trim()
+                  ? ownerProfile.full_name.trim()
+                  : ownerProfile.email || null,
+              email: ownerProfile.email || null,
+              role: ownerProfile.role || null,
+            };
+          }
+          return {
+            ...item,
+            quantity,
+            inventoried: Boolean(item.inventoried),
+          } as AssetRecord;
+        });
+
+        if (Object.keys(ownersBuffer).length) {
+          setOwnersMap((prev) => ({ ...prev, ...ownersBuffer }));
+        }
+
+        setAssets(normalized);
       } catch (cause) {
         console.warn("[AssetManagement] fetchAssets: unexpected", cause);
         setErrorMessage("Falha inesperada ao carregar os ativos.");
@@ -728,17 +734,71 @@ const AssetManagement: React.FC = () => {
     };
 
     try {
-      const { error } = await supabase.from("assets").insert(payload);
-      if (error) {
-        console.warn("[AssetManagement] insert:", error.message);
-        setFormStatus("error");
-        setFormMessage("Falha ao cadastrar ativo: " + error.message);
-      } else {
-        setFormStatus("success");
-        setFormMessage("Ativo cadastrado com sucesso.");
-        setFormState({ ...DEFAULT_FORM_STATE });
-        await fetchAssets("refresh");
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.warn("[AssetManagement] getSession (submit):", sessionError.message);
       }
+
+      const token = sessionData?.session?.access_token;
+      if (!token) {
+        setFormStatus("error");
+        setFormMessage("Sessão expirada. Entre novamente para cadastrar ativos.");
+        return;
+      }
+
+      const response = await fetch(apiUrl("/api/assets"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let detail: any = null;
+        try {
+          detail = await response.json();
+        } catch (_ignore) {
+          detail = null;
+        }
+        const message = detail?.error || `Status ${response.status}`;
+        console.warn("[AssetManagement] insert:", message);
+        setFormStatus("error");
+        setFormMessage("Falha ao cadastrar ativo: " + message);
+        return;
+      }
+
+      let payloadResponse: { data?: AssetRecord | null } | null = null;
+      try {
+        payloadResponse = await response.json();
+      } catch (_ignore) {
+        payloadResponse = null;
+      }
+
+      const createdAsset = payloadResponse?.data ?? null;
+      if (createdAsset?.support_owner_profile?.id) {
+        const ownerProfile = createdAsset.support_owner_profile;
+        setOwnersMap((prev) => ({
+          ...prev,
+          [ownerProfile.id]: {
+            full_name:
+              typeof ownerProfile.full_name === "string" &&
+              ownerProfile.full_name.trim()
+                ? ownerProfile.full_name.trim()
+                : ownerProfile.email || null,
+            email: ownerProfile.email || null,
+            role: ownerProfile.role || null,
+          },
+        }));
+      }
+
+      setFormStatus("success");
+      setFormMessage("Ativo cadastrado com sucesso.");
+      setFormState({ ...DEFAULT_FORM_STATE });
+      await fetchAssets("refresh");
     } catch (cause) {
       console.warn("[AssetManagement] insert: unexpected", cause);
       setFormStatus("error");
@@ -1104,7 +1164,16 @@ const AssetManagement: React.FC = () => {
                             label: asset.status,
                             tone: "neutral" as const,
                           };
-                        const ownerMeta = asset.support_owner
+                        const ownerMeta = asset.support_owner_profile?.id
+                          ? {
+                              full_name:
+                                asset.support_owner_profile.full_name ||
+                                asset.support_owner_profile.email ||
+                                null,
+                              email: asset.support_owner_profile.email || null,
+                              role: asset.support_owner_profile.role || null,
+                            }
+                          : asset.support_owner
                           ? ownersMap[asset.support_owner]
                           : undefined;
                         const ownerLabel = ownerMeta?.full_name?.trim()
