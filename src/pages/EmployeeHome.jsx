@@ -19,13 +19,40 @@ const STATUS_LABEL = {
 };
 
 const TicketCard = styled(Card)`
-  width: 100%;
-  padding: var(--space-5);
-  border-radius: 32px;
-  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.95);
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => openRatingModal(t)}
+                          >
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 3000;
+`;
+                              await supabase
+                                .from("tickets")
+                                .update({
+                                  status: "in_progress",
+                                  resolution_rating: null,
+                                  resolution_feedback: null,
+                                  resolution_confirmed_at: null,
+                                  resolution_confirmed_by: null,
+                                  closed_at: null,
+                                })
+                                .eq("id", t.id);
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+  display: flex;
+                                    ? {
+                                        ...x,
+                                        status: "in_progress",
+                                        resolution_rating: null,
+                                        resolution_feedback: null,
+                                        resolution_confirmed_at: null,
+                                        resolution_confirmed_by: null,
+                                        closed_at: null,
+                                      }
   gap: var(--space-4);
 `;
 
@@ -74,6 +101,10 @@ export default function EmployeeHome({ user, searchTerm }) {
   });
   const [now, setNow] = useState(Date.now());
   const [showAIChat, setShowAIChat] = useState(false);
+  const [ratingModal, setRatingModal] = useState({ visible: false, ticket: null });
+  const [ratingValue, setRatingValue] = useState(5);
+  const [ratingComment, setRatingComment] = useState("");
+  const [ratingLoading, setRatingLoading] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -133,6 +164,64 @@ export default function EmployeeHome({ user, searchTerm }) {
       return;
     }
     setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+  }
+
+  function openRatingModal(ticket) {
+    setRatingModal({ visible: true, ticket });
+    setRatingValue(ticket?.resolution_rating || 5);
+    setRatingComment(ticket?.resolution_feedback || "");
+  }
+
+  function closeRatingModal() {
+    setRatingModal({ visible: false, ticket: null });
+    setRatingValue(5);
+    setRatingComment("");
+    setRatingLoading(false);
+  }
+
+  async function handleRatingSubmit() {
+    if (!ratingModal.ticket) return;
+    setRatingLoading(true);
+    const nowIso = new Date().toISOString();
+    const sanitizedRating = Math.min(5, Math.max(1, ratingValue));
+    const sanitizedFeedback = ratingComment.trim();
+
+    const { error } = await supabase
+      .from("tickets")
+      .update({
+        status: "closed",
+        closed_at: nowIso,
+        resolution_rating: sanitizedRating,
+        resolution_feedback: sanitizedFeedback || null,
+        resolution_confirmed_at: nowIso,
+        resolution_confirmed_by: user.id,
+      })
+      .eq("id", ratingModal.ticket.id)
+      .eq("created_by", user.id);
+
+    if (error) {
+      alert("Não foi possível concluir o chamado. Tente novamente.");
+      setRatingLoading(false);
+      return;
+    }
+
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ratingModal.ticket.id
+          ? {
+              ...t,
+              status: "closed",
+              closed_at: nowIso,
+              resolution_rating: sanitizedRating,
+              resolution_feedback: sanitizedFeedback || null,
+              resolution_confirmed_at: nowIso,
+              resolution_confirmed_by: user.id,
+            }
+          : t,
+      ),
+    );
+
+    closeRatingModal();
   }
 
   const formatDuration = (ms) => {
