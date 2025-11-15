@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { type ChangeEvent, type ComponentType, useCallback, useEffect, useMemo, useState } from "react"
 import type { Asset, Ticket, User } from "@/lib/types"
 import { buildAssetIndicators, normalizeAssetFilter } from "@/lib/utils"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
@@ -22,21 +22,21 @@ interface SupportDashboardProps {
   currentUser: User | null
 }
 
-const priorityColors = {
+const priorityColors: Record<Ticket["priority"], string> = {
   low: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
   medium: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
   high: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
   critical: "bg-red-500/10 text-red-700 dark:text-red-400",
 }
 
-const priorityLabels = {
+const priorityLabels: Record<Ticket["priority"], string> = {
   low: "Baixa",
   medium: "Média",
   high: "Alta",
   critical: "Crítica",
 }
 
-const statusColors = {
+const statusColors: Record<Ticket["status"], string> = {
   open: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
   in_progress: "bg-purple-500/10 text-purple-700 dark:text-purple-400",
   waiting_response: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
@@ -44,7 +44,7 @@ const statusColors = {
   closed: "bg-gray-500/10 text-gray-700 dark:text-gray-400",
 }
 
-const statusLabels = {
+const statusLabels: Record<Ticket["status"], string> = {
   open: "Aberto",
   in_progress: "Em Andamento",
   waiting_response: "Aguardando Resposta",
@@ -52,7 +52,7 @@ const statusLabels = {
   closed: "Fechado",
 }
 
-const statusIcons = {
+const statusIcons: Record<Ticket["status"], ComponentType<any>> = {
   open: AlertCircle,
   in_progress: Clock,
   waiting_response: Clock,
@@ -173,7 +173,7 @@ export function SupportDashboard({ initialTickets, supportUsers, assignedAssets,
           schema: "public",
           table: "tickets",
         },
-        async (payload) => {
+        async (payload: any) => {
           console.log("[v0] Real-time ticket update:", payload)
 
           if (payload.eventType === "INSERT") {
@@ -226,7 +226,7 @@ export function SupportDashboard({ initialTickets, supportUsers, assignedAssets,
           schema: "public",
           table: "assets",
         },
-        async (payload) => {
+        async (payload: any) => {
           const newOwner = payload.new?.support_owner ?? null
           const previousOwner = payload.old?.support_owner ?? null
 
@@ -397,163 +397,6 @@ export function SupportDashboard({ initialTickets, supportUsers, assignedAssets,
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Ativos atribuídos</CardTitle>
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{assetsStats.total}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Inventariados</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{assetsStats.inventoried}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Licenças a vencer</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{assetsStats.expiringLicense}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Obsoletos / manutenção</CardTitle>
-            <Clock className="h-4 w-4 text-slate-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {assetsStats.obsolete + assetsStats.maintenanceDue}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Ativos de TI atribuídos</CardTitle>
-          <CardDescription>Monitore os ativos sob sua responsabilidade.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-end">
-            <div className="flex-1">
-              <label htmlFor="asset-search" className="mb-1 block text-xs font-medium text-muted-foreground">
-                Buscar
-              </label>
-              <Input
-                id="asset-search"
-                placeholder="Código, ativo ou palavra-chave"
-                value={assetSearch}
-                onChange={(event) => setAssetSearch(event.target.value)}
-              />
-            </div>
-            <div className="flex-1">
-              <label htmlFor="asset-category" className="mb-1 block text-xs font-medium text-muted-foreground">
-                Categoria
-              </label>
-              <Select value={assetCategoryFilter} onValueChange={setAssetCategoryFilter}>
-                <SelectTrigger id="asset-category">
-                  <SelectValue placeholder="Categoria" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="hardware">Hardware</SelectItem>
-                  <SelectItem value="software">Software</SelectItem>
-                  <SelectItem value="network">Rede</SelectItem>
-                  <SelectItem value="peripherals">Periféricos</SelectItem>
-                  <SelectItem value="licenses">Licenças</SelectItem>
-                  <SelectItem value="mobile">Dispositivos móveis</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-1">
-              <label htmlFor="asset-status" className="mb-1 block text-xs font-medium text-muted-foreground">
-                Status
-              </label>
-              <Select value={assetStatusFilter} onValueChange={setAssetStatusFilter}>
-                <SelectTrigger id="asset-status">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="em uso">Em uso</SelectItem>
-                  <SelectItem value="em manutenção">Em manutenção</SelectItem>
-                  <SelectItem value="planejado">Planejado</SelectItem>
-                  <SelectItem value="obsoleto">Obsoleto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {filteredAssets.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum ativo atribuído a você no momento.</p>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground md:text-sm">
-                <span>Total: {assetsStats.total}</span>
-                <span>Inventariados: {assetsStats.inventoried}</span>
-                <span>Pendentes: {assetsStats.pendingInventory}</span>
-              </div>
-              <div className="space-y-3">
-                {filteredAssets.map((asset) => {
-                  const statusMeta =
-                    assetStatusMeta[asset.status] ?? {
-                      label: asset.status,
-                      className: "bg-slate-500/10 text-slate-700 border-slate-200",
-                    }
-                  const inventoryBadgeClass = asset.inventoried
-                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-200"
-                    : "bg-amber-500/10 text-amber-700 border-amber-200"
-
-                  return (
-                    <div
-                      key={asset.id}
-                      className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
-                    >
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold md:text-base">
-                          {asset.asset_code} • {asset.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground md:text-sm">
-                          {assetCategoryLabels[asset.category] ?? asset.category}
-                          {asset.location ? ` • ${asset.location}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                        <Badge variant="outline" className={statusMeta.className}>
-                          {statusMeta.label}
-                        </Badge>
-                        <Badge variant="outline" className={inventoryBadgeClass}>
-                          {asset.inventoried ? "Inventariado" : "Inventário pendente"}
-                        </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground md:text-right md:text-sm">
-                        <p>{nextActionLabel(asset)}</p>
-                        {asset.warranty_expires_at && (
-                          <p>Garantia: {formatAssetDate(asset.warranty_expires_at)}</p>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Filters */}
       <Card>
         <CardHeader>
@@ -649,7 +492,10 @@ export function SupportDashboard({ initialTickets, supportUsers, assignedAssets,
                       </div>
                     </div>
                     <div className="flex flex-col gap-3 min-w-[200px]">
-                      <Select value={ticket.status} onValueChange={(value) => handleStatusChange(ticket.id, value)}>
+                      <Select
+                        value={ticket.status}
+                        onValueChange={(value: Ticket["status"]) => handleStatusChange(ticket.id, value)}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -666,7 +512,7 @@ export function SupportDashboard({ initialTickets, supportUsers, assignedAssets,
 
                       <Select
                         value={ticket.assigned_to || "unassigned"}
-                        onValueChange={(value) => handleAssign(ticket.id, value)}
+                        onValueChange={(value: string) => handleAssign(ticket.id, value)}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Atribuir a..." />
@@ -694,6 +540,163 @@ export function SupportDashboard({ initialTickets, supportUsers, assignedAssets,
           })
         )}
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Ativos atribuídos</CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{assetsStats.total}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Inventariados</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{assetsStats.inventoried}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Licenças a vencer</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{assetsStats.expiringLicense}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Obsoletos / manutenção</CardTitle>
+            <Clock className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {assetsStats.obsolete + assetsStats.maintenanceDue}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ativos de TI atribuídos</CardTitle>
+          <CardDescription>Monitore os ativos sob sua responsabilidade.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+            <div className="flex-1">
+              <label htmlFor="asset-search" className="mb-1 block text-xs font-medium text-muted-foreground">
+                Buscar
+              </label>
+              <Input
+                id="asset-search"
+                placeholder="Código, ativo ou palavra-chave"
+                value={assetSearch}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => setAssetSearch(event.target.value)}
+              />
+            </div>
+            <div className="flex-1">
+              <label htmlFor="asset-category" className="mb-1 block text-xs font-medium text-muted-foreground">
+                Categoria
+              </label>
+              <Select value={assetCategoryFilter} onValueChange={setAssetCategoryFilter}>
+                <SelectTrigger id="asset-category">
+                  <SelectValue placeholder="Categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="hardware">Hardware</SelectItem>
+                  <SelectItem value="software">Software</SelectItem>
+                  <SelectItem value="network">Rede</SelectItem>
+                  <SelectItem value="peripherals">Periféricos</SelectItem>
+                  <SelectItem value="licenses">Licenças</SelectItem>
+                  <SelectItem value="mobile">Dispositivos móveis</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <label htmlFor="asset-status" className="mb-1 block text-xs font-medium text-muted-foreground">
+                Status
+              </label>
+              <Select value={assetStatusFilter} onValueChange={setAssetStatusFilter}>
+                <SelectTrigger id="asset-status">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="em uso">Em uso</SelectItem>
+                  <SelectItem value="em manutenção">Em manutenção</SelectItem>
+                  <SelectItem value="planejado">Planejado</SelectItem>
+                  <SelectItem value="obsoleto">Obsoleto</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {filteredAssets.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum ativo atribuído a você no momento.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground md:text-sm">
+                <span>Total: {assetsStats.total}</span>
+                <span>Inventariados: {assetsStats.inventoried}</span>
+                <span>Pendentes: {assetsStats.pendingInventory}</span>
+              </div>
+              <div className="space-y-3">
+                {filteredAssets.map((asset: Asset) => {
+                  const statusMeta =
+                    assetStatusMeta[asset.status] ?? {
+                      label: asset.status,
+                      className: "bg-slate-500/10 text-slate-700 border-slate-200",
+                    }
+                  const inventoryBadgeClass = asset.inventoried
+                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-200"
+                    : "bg-amber-500/10 text-amber-700 border-amber-200"
+
+                  return (
+                    <div
+                      key={asset.id}
+                      className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold md:text-base">
+                          {asset.asset_code} • {asset.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground md:text-sm">
+                          {assetCategoryLabels[asset.category] ?? asset.category}
+                          {asset.location ? ` • ${asset.location}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        <Badge variant="outline" className={statusMeta.className}>
+                          {statusMeta.label}
+                        </Badge>
+                        <Badge variant="outline" className={inventoryBadgeClass}>
+                          {asset.inventoried ? "Inventariado" : "Inventário pendente"}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground md:text-right md:text-sm">
+                        <p>{nextActionLabel(asset)}</p>
+                        {asset.warranty_expires_at && (
+                          <p>Garantia: {formatAssetDate(asset.warranty_expires_at)}</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
