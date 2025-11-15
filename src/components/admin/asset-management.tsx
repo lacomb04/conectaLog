@@ -52,6 +52,13 @@ const STATUS_OPTIONS: AssetStatus[] = [
   "planejado",
   "obsoleto",
 ];
+
+const ADMIN_SECTION_OPTIONS = [
+  { id: "overview", label: "Visão geral" },
+  { id: "critical", label: "Ativos críticos" },
+  { id: "inventory", label: "Inventário" },
+  { id: "create", label: "Cadastro rápido" },
+];
 const LIFECYCLE_LABEL: Record<LifecycleStage, string> = {
   acquisition: "Aquisição",
   deployment: "Implantação",
@@ -236,6 +243,50 @@ const RefreshCaption = styled.span`
   color: #64748b;
 `;
 
+const SectionMenu = styled.nav`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 28px 0 8px;
+`;
+
+const SectionMenuButton = styled.button<{ $active: boolean }>`
+  padding: 8px 18px;
+  border-radius: 999px;
+  border: 1px solid
+    ${({ $active }) => ($active ? "#1d4ed8" : "rgba(148, 163, 184, 0.4)")};
+  background: ${({ $active }) =>
+    $active ? "linear-gradient(135deg, #1d4ed8, #3b82f6)" : "#f8fafc"};
+  color: ${({ $active }) => ($active ? "#ffffff" : "#1f2937")};
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: ${({ $active }) =>
+    $active ? "0 10px 24px rgba(59, 130, 246, 0.22)" : "none"};
+
+  &:hover {
+    border-color: #1d4ed8;
+    color: ${({ $active }) => ($active ? "#ffffff" : "#1d4ed8")};
+  }
+`;
+
+const AnimatedSection = styled.section<{ $visible: boolean }>`
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: ${({ $visible }) => ($visible ? "28px" : "0")};
+  opacity: ${({ $visible }) => ($visible ? 1 : 0)};
+  transform: translateY(${({ $visible }) => ($visible ? "0" : "-12px")});
+  max-height: ${({ $visible }) => ($visible ? "5000px" : "0px")};
+  overflow: hidden;
+  transition:
+    opacity 0.24s ease,
+    transform 0.24s ease,
+    max-height 0.32s ease,
+    margin-top 0.24s ease;
+  pointer-events: ${({ $visible }) => ($visible ? "auto" : "none")};
+`;
 const MetricsGrid = styled.div`
   display: grid;
   gap: 18px;
@@ -603,6 +654,24 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
   const [inlineDraft, setInlineDraft] = useState<InlineDraftState | null>(null);
   const [inlineSaving, setInlineSaving] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
+  const [visibleSections, setVisibleSections] = useState<Set<string>>(
+    () => new Set(ADMIN_SECTION_OPTIONS.map((option) => option.id))
+  );
+
+  const toggleSectionVisibility = useCallback((sectionId: string) => {
+    setVisibleSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        if (next.size === 1) {
+          return prev;
+        }
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  }, []);
 
   const patchAsset = useCallback(
     async (
@@ -1611,137 +1680,187 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
         )}
       </SectionHeader>
 
-      <MetricsGrid>
-        <Card>
-          <CardHeaderBlock>
-            <CardTitleLabel>Ativos inventariados</CardTitleLabel>
-            <CardSubtitle>Percentual em relação ao parque total</CardSubtitle>
-          </CardHeaderBlock>
-          <MetricValue tone="accent">
-            {loading ? "..." : `${indicators.inventoriedPercent}%`}
-          </MetricValue>
-        </Card>
+      <SectionMenu aria-label="Seleção de blocos do painel">
+        {ADMIN_SECTION_OPTIONS.map((option) => {
+          const active = visibleSections.has(option.id);
+          return (
+            <SectionMenuButton
+              key={option.id}
+              type="button"
+              aria-pressed={active}
+              $active={active}
+              onClick={() => toggleSectionVisibility(option.id)}
+            >
+              {option.label}
+            </SectionMenuButton>
+          );
+        })}
+      </SectionMenu>
+
+      <AnimatedSection
+        $visible={visibleSections.has("overview")}
+        aria-hidden={!visibleSections.has("overview")}
+      >
+        <MetricsGrid>
+          <Card>
+            <CardHeaderBlock>
+              <CardTitleLabel>Ativos inventariados</CardTitleLabel>
+              <CardSubtitle>Percentual em relação ao parque total</CardSubtitle>
+            </CardHeaderBlock>
+            <MetricValue tone="accent">
+              {loading ? "..." : `${indicators.inventoriedPercent}%`}
+            </MetricValue>
+          </Card>
+
+          <Card>
+            <CardHeaderBlock>
+              <CardTitleLabel>Licenças vencidas</CardTitleLabel>
+              <CardSubtitle>Contratos que exigem renovação imediata</CardSubtitle>
+            </CardHeaderBlock>
+            <MetricValue tone="warning">
+              {loading ? "..." : indicators.expiredLicenses}
+            </MetricValue>
+          </Card>
+
+          <Card>
+            <CardHeaderBlock>
+              <CardTitleLabel>Tempo médio de atualização</CardTitleLabel>
+              <CardSubtitle>Intervalo entre manutenções planejadas</CardSubtitle>
+            </CardHeaderBlock>
+            <MetricValue>
+              {loading
+                ? "..."
+                : indicators.averageUpdateTime
+                ? `${indicators.averageUpdateTime} dias`
+                : "—"}
+            </MetricValue>
+          </Card>
+        </MetricsGrid>
 
         <Card>
           <CardHeaderBlock>
-            <CardTitleLabel>Licenças vencidas</CardTitleLabel>
-            <CardSubtitle>Contratos que exigem renovação imediata</CardSubtitle>
+            <CardTitleLabel>Ciclo de vida do ativo</CardTitleLabel>
+            <CardSubtitle>
+              Acompanhe responsabilidades e entregas em cada etapa da jornada do ativo.
+            </CardSubtitle>
           </CardHeaderBlock>
-          <MetricValue tone="warning">
-            {loading ? "..." : indicators.expiredLicenses}
-          </MetricValue>
+          <LifecycleGrid>
+            {(Object.keys(LIFECYCLE_LABEL) as LifecycleStage[]).map((stage) => (
+              <LifecycleTile key={stage}>
+                <LifecycleTitleText>{LIFECYCLE_LABEL[stage]}</LifecycleTitleText>
+                <LifecycleDescriptionText>
+                  {LIFECYCLE_DESCRIPTION[stage]}
+                </LifecycleDescriptionText>
+              </LifecycleTile>
+            ))}
+          </LifecycleGrid>
         </Card>
+      </AnimatedSection>
 
+      <AnimatedSection
+        $visible={visibleSections.has("critical")}
+        aria-hidden={!visibleSections.has("critical")}
+      >
         <Card>
           <CardHeaderBlock>
-            <CardTitleLabel>Tempo médio de atualização</CardTitleLabel>
-            <CardSubtitle>Intervalo entre manutenções planejadas</CardSubtitle>
+            <CardTitleLabel>Ativos que exigem atenção</CardTitleLabel>
+            <CardSubtitle>
+              Indicadores de licenças, manutenções e inventário que precisam de ação.
+            </CardSubtitle>
           </CardHeaderBlock>
-          <MetricValue>
-            {loading
-              ? "..."
-              : indicators.averageUpdateTime
-              ? `${indicators.averageUpdateTime} dias`
-              : "—"}
-          </MetricValue>
+          {!assets.length ? (
+            <EmptyState>Carregue o inventário para visualizar os indicadores críticos.</EmptyState>
+          ) : (
+            <>
+              <AttentionSummaryRow>
+                {attentionSummaryChips.map((chip) => (
+                  <AttentionSummaryChip
+                    key={chip.key}
+                    $alert={chip.value > 0 && chip.alert}
+                  >
+                    <span>{chip.label}</span>
+                    <AttentionSummaryValue>{chip.value}</AttentionSummaryValue>
+                  </AttentionSummaryChip>
+                ))}
+              </AttentionSummaryRow>
+              {attentionSummary.flagged.length ? (
+                <TableWrapper>
+                  <StyledTable>
+                    <thead>
+                      <tr>
+                        <TableHeadCell>Código</TableHeadCell>
+                        <TableHeadCell>Ativo</TableHeadCell>
+                        <TableHeadCell>Status</TableHeadCell>
+                        <TableHeadCell>Próxima ação</TableHeadCell>
+                        <TableHeadCell>Alertas</TableHeadCell>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {attentionSummary.flagged.map(({ asset, flags }) => {
+                        const statusMeta =
+                          STATUS_BADGE[asset.status] ?? {
+                            label: asset.status,
+                            tone: "neutral" as const,
+                          };
+                        const nextAction = describeNextAction(asset);
+                        return (
+                          <TableRow key={asset.id}>
+                            <TableCell>{asset.asset_code}</TableCell>
+                            <TableCell>
+                              <AssetName>{asset.name}</AssetName>
+                              <AssetMeta>
+                                {CATEGORY_LABEL[asset.category]} • {asset.location || "Local não informado"}
+                              </AssetMeta>
+                              <AssetMeta>
+                                Ciclo de vida: {LIFECYCLE_LABEL[asset.lifecycle_stage]}
+                              </AssetMeta>
+                            </TableCell>
+                            <TableCell>
+                              <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+                            </TableCell>
+                            <TableCell>{nextAction}</TableCell>
+                            <TableCell>
+                              <AttentionFlagGroup>
+                                {flags.map((flag, index) => (
+                                  <Badge
+                                    key={`${asset.id}-flag-${index}`}
+                                    tone={
+                                      flag.includes("vencid") || flag.includes("atraso")
+                                        ? "danger"
+                                        : "warning"
+                                    }
+                                  >
+                                    {flag}
+                                  </Badge>
+                                ))}
+                              </AttentionFlagGroup>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </tbody>
+                  </StyledTable>
+                </TableWrapper>
+              ) : (
+                <EmptyState>Todos os ativos estão em dia no momento.</EmptyState>
+              )}
+            </>
+          )}
         </Card>
-      </MetricsGrid>
+      </AnimatedSection>
 
-      <Card>
-        <CardHeaderBlock>
-          <CardTitleLabel>Ativos que exigem atenção</CardTitleLabel>
-          <CardSubtitle>
-            Indicadores de licenças, manutenções e inventário que precisam de ação.
-          </CardSubtitle>
-        </CardHeaderBlock>
-        {!assets.length ? (
-          <EmptyState>Carregue o inventário para visualizar os indicadores críticos.</EmptyState>
-        ) : (
-          <>
-            <AttentionSummaryRow>
-              {attentionSummaryChips.map((chip) => (
-                <AttentionSummaryChip
-                  key={chip.key}
-                  $alert={chip.value > 0 && chip.alert}
-                >
-                  <span>{chip.label}</span>
-                  <AttentionSummaryValue>{chip.value}</AttentionSummaryValue>
-                </AttentionSummaryChip>
-              ))}
-            </AttentionSummaryRow>
-            {attentionSummary.flagged.length ? (
-              <TableWrapper>
-                <StyledTable>
-                  <thead>
-                    <tr>
-                      <TableHeadCell>Código</TableHeadCell>
-                      <TableHeadCell>Ativo</TableHeadCell>
-                      <TableHeadCell>Status</TableHeadCell>
-                      <TableHeadCell>Próxima ação</TableHeadCell>
-                      <TableHeadCell>Alertas</TableHeadCell>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {attentionSummary.flagged.map(({ asset, flags }) => {
-                      const statusMeta =
-                        STATUS_BADGE[asset.status] ?? {
-                          label: asset.status,
-                          tone: "neutral" as const,
-                        };
-                      const nextAction = describeNextAction(asset);
-                      return (
-                        <TableRow key={asset.id}>
-                          <TableCell>{asset.asset_code}</TableCell>
-                          <TableCell>
-                            <AssetName>{asset.name}</AssetName>
-                            <AssetMeta>
-                              {CATEGORY_LABEL[asset.category]} • {asset.location || "Local não informado"}
-                            </AssetMeta>
-                            <AssetMeta>
-                              Ciclo de vida: {LIFECYCLE_LABEL[asset.lifecycle_stage]}
-                            </AssetMeta>
-                          </TableCell>
-                          <TableCell>
-                            <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
-                          </TableCell>
-                          <TableCell>{nextAction}</TableCell>
-                          <TableCell>
-                            <AttentionFlagGroup>
-                              {flags.map((flag, index) => (
-                                <Badge
-                                  key={`${asset.id}-flag-${index}`}
-                                  tone={
-                                    flag.includes("vencid") || flag.includes("atraso")
-                                      ? "danger"
-                                      : "warning"
-                                  }
-                                >
-                                  {flag}
-                                </Badge>
-                              ))}
-                            </AttentionFlagGroup>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </tbody>
-                </StyledTable>
-              </TableWrapper>
-            ) : (
-              <EmptyState>Todos os ativos estão em dia no momento.</EmptyState>
-            )}
-          </>
-        )}
-      </Card>
-
-      <Card>
-        <CardHeaderBlock>
-          <CardTitleLabel>Cadastrar novo ativo</CardTitleLabel>
-          <CardSubtitle>
-            Registre ativos diretamente no inventário para que o time de suporte acompanhe responsabilidades e prazos.
-          </CardSubtitle>
-        </CardHeaderBlock>
-        <FormLayout onSubmit={handleSubmit}>
+      <AnimatedSection
+        $visible={visibleSections.has("create")}
+        aria-hidden={!visibleSections.has("create")}
+      >
+        <Card>
+          <CardHeaderBlock>
+            <CardTitleLabel>Cadastrar novo ativo</CardTitleLabel>
+            <CardSubtitle>
+              Registre ativos diretamente no inventário para que o time de suporte acompanhe responsabilidades e prazos.
+            </CardSubtitle>
+          </CardHeaderBlock>
+          <FormLayout onSubmit={handleSubmit}>
           {isEditing && (
             <EditingNotice>
               <div>
@@ -1983,28 +2102,14 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
               {formMessage}
             </FormFeedback>
           )}
-        </FormLayout>
-      </Card>
+          </FormLayout>
+        </Card>
+      </AnimatedSection>
 
-      <Card>
-        <CardHeaderBlock>
-          <CardTitleLabel>Ciclo de vida do ativo</CardTitleLabel>
-          <CardSubtitle>
-            Acompanhe responsabilidades e entregas em cada etapa da jornada do ativo.
-          </CardSubtitle>
-        </CardHeaderBlock>
-        <LifecycleGrid>
-          {(Object.keys(LIFECYCLE_LABEL) as LifecycleStage[]).map((stage) => (
-            <LifecycleTile key={stage}>
-              <LifecycleTitleText>{LIFECYCLE_LABEL[stage]}</LifecycleTitleText>
-              <LifecycleDescriptionText>
-                {LIFECYCLE_DESCRIPTION[stage]}
-              </LifecycleDescriptionText>
-            </LifecycleTile>
-          ))}
-        </LifecycleGrid>
-      </Card>
-
+      <AnimatedSection
+        $visible={visibleSections.has("inventory")}
+        aria-hidden={!visibleSections.has("inventory")}
+      >
         <Card>
           <CardHeaderBlock>
             <CardTitleLabel>Filtrar inventário</CardTitleLabel>
@@ -2080,40 +2185,40 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           </FilterToolbar>
         </Card>
 
-      <CategoryStack>
-        {loading && !assets.length ? (
-          <Card>
-            <EmptyState>Carregando inventário...</EmptyState>
-          </Card>
-        ) : !categoriesWithData.length ? (
-          <Card>
-            <EmptyState>Nenhum ativo cadastrado até o momento.</EmptyState>
-          </Card>
-        ) : (
-          <>
-            {tableMessage && (
-              <TableFeedback tone={tableMessage.tone}>
-                {tableMessage.text}
-              </TableFeedback>
-            )}
-            {categoriesWithData.map((category) => {
-            const list = groupedAssets[category];
-            const unitCount = list.reduce(
-              (acc, asset) => acc + (asset.quantity || 0),
-              0
-            );
-            const subtitle =
-              unitCount !== list.length
-                ? `${list.length} registros • ${unitCount} unidades`
-                : `${list.length} ativos catalogados`;
-            return (
-              <Card key={category}>
-                <CardHeaderBlock>
-                  <CardTitleLabel>{CATEGORY_LABEL[category]}</CardTitleLabel>
-                  <CardSubtitle>{subtitle}</CardSubtitle>
-                </CardHeaderBlock>
-                <TableWrapper>
-                  <StyledTable>
+        <CategoryStack>
+          {loading && !assets.length ? (
+            <Card>
+              <EmptyState>Carregando inventário...</EmptyState>
+            </Card>
+          ) : !categoriesWithData.length ? (
+            <Card>
+              <EmptyState>Nenhum ativo cadastrado até o momento.</EmptyState>
+            </Card>
+          ) : (
+            <>
+              {tableMessage && (
+                <TableFeedback tone={tableMessage.tone}>
+                  {tableMessage.text}
+                </TableFeedback>
+              )}
+              {categoriesWithData.map((category) => {
+                const list = groupedAssets[category];
+                const unitCount = list.reduce(
+                  (acc, asset) => acc + (asset.quantity || 0),
+                  0
+                );
+                const subtitle =
+                  unitCount !== list.length
+                    ? `${list.length} registros • ${unitCount} unidades`
+                    : `${list.length} ativos catalogados`;
+                return (
+                  <Card key={category}>
+                    <CardHeaderBlock>
+                      <CardTitleLabel>{CATEGORY_LABEL[category]}</CardTitleLabel>
+                      <CardSubtitle>{subtitle}</CardSubtitle>
+                    </CardHeaderBlock>
+                    <TableWrapper>
+                      <StyledTable>
                     <thead>
                       <tr>
                         <TableHeadCell>Código</TableHeadCell>
@@ -2454,6 +2559,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           </>
         )}
       </CategoryStack>
+      </AnimatedSection>
     </Section>
   );
 };
