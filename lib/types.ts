@@ -6,6 +6,12 @@ export type TicketStatus = "open" | "in_progress" | "waiting_response" | "resolv
 
 export type TicketCategory = "hardware" | "software" | "network" | "access" | "other"
 
+export type AssetCategory = "hardware" | "software" | "network" | "peripherals" | "licenses" | "mobile"
+
+export type AssetStatus = "em uso" | "em manutenção" | "planejado" | "obsoleto"
+
+export type AssetLifecycleStage = "acquisition" | "deployment" | "use" | "maintenance" | "disposal"
+
 export interface User {
   id: string
   email: string
@@ -75,6 +81,29 @@ export interface Message {
   is_internal: boolean
   created_at: string
   user?: User
+}
+
+export interface Asset {
+  id: string
+  asset_code: string
+  name: string
+  category: AssetCategory
+  subcategory?: string | null
+  status: AssetStatus
+  lifecycle_stage: AssetLifecycleStage
+  quantity: number
+  acquisition_date?: string | null
+  last_maintenance_date?: string | null
+  next_maintenance_date?: string | null
+  warranty_expires_at?: string | null
+  license_expiry?: string | null
+  location?: string | null
+  description?: string | null
+  inventoried: boolean
+  support_owner?: string | null
+  support_owner_profile?: Pick<User, "id" | "full_name" | "email" | "role"> | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface TicketHistory {

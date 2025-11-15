@@ -1089,6 +1089,12 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
         setAssets((prev) =>
           prev.map((asset) => (asset.id === assetId ? updatedAsset : asset))
         );
+        if (editingAssetId === assetId) {
+          setFormState((prev) => ({
+            ...prev,
+            support_owner: ownerId || "",
+          }));
+        }
         setTableMessage({
           tone: "success",
           text: "Responsável atualizado com sucesso.",
@@ -1103,7 +1109,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
         cleanup();
       }
     },
-    [assets, currentUser]
+    [assets, currentUser, editingAssetId]
   );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1312,81 +1318,6 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           </SectionFeedback>
         )}
       </SectionHeader>
-
-      <Card>
-        <CardHeaderBlock>
-          <CardTitleLabel>Filtrar inventário</CardTitleLabel>
-          <CardSubtitle>
-            Combine filtros para localizar ativos por código, categoria ou responsável.
-          </CardSubtitle>
-        </CardHeaderBlock>
-        <FilterToolbar>
-          <FilterField>
-            <FieldLabel htmlFor="filter-search">Buscar</FieldLabel>
-            <Input
-              id="filter-search"
-              name="filter-search"
-              placeholder="Código, ativo ou palavra-chave"
-              value={filters.search}
-              onChange={handleFilterSearchChange}
-            />
-          </FilterField>
-          <FilterField>
-            <FieldLabel htmlFor="filter-category">Categoria</FieldLabel>
-            <Select
-              id="filter-category"
-              name="category"
-              value={filters.category}
-              onChange={handleFilterSelectChange}
-            >
-              <option value="all">Todas as categorias</option>
-              {CATEGORY_ORDER.map((category) => (
-                <option key={category} value={category}>
-                  {CATEGORY_LABEL[category]}
-                </option>
-              ))}
-            </Select>
-          </FilterField>
-          <FilterField>
-            <FieldLabel htmlFor="filter-status">Status</FieldLabel>
-            <Select
-              id="filter-status"
-              name="status"
-              value={filters.status}
-              onChange={handleFilterSelectChange}
-            >
-              <option value="all">Todos os status</option>
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {STATUS_BADGE[status]?.label ?? status}
-                </option>
-              ))}
-            </Select>
-          </FilterField>
-          <FilterField>
-            <FieldLabel htmlFor="filter-owner">Responsável</FieldLabel>
-            <Select
-              id="filter-owner"
-              name="owner"
-              value={filters.owner}
-              onChange={handleFilterSelectChange}
-            >
-              <option value="all">Todos os responsáveis</option>
-              <option value="__none">Sem responsável</option>
-              {supportUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.full_name}
-                </option>
-              ))}
-            </Select>
-          </FilterField>
-          <FilterActions>
-            <Button type="button" variant="ghost" onClick={handleResetFilters}>
-              Limpar filtros
-            </Button>
-          </FilterActions>
-        </FilterToolbar>
-      </Card>
 
       <MetricsGrid>
         <Card>
@@ -1694,6 +1625,81 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           ))}
         </LifecycleGrid>
       </Card>
+
+        <Card>
+          <CardHeaderBlock>
+            <CardTitleLabel>Filtrar inventário</CardTitleLabel>
+            <CardSubtitle>
+              Combine filtros e refine a visão de ativos por código, categoria, status ou responsável.
+            </CardSubtitle>
+          </CardHeaderBlock>
+          <FilterToolbar>
+            <FilterField>
+              <FieldLabel htmlFor="filter-search">Buscar</FieldLabel>
+              <Input
+                id="filter-search"
+                name="filter-search"
+                placeholder="Código, ativo ou palavra-chave"
+                value={filters.search}
+                onChange={handleFilterSearchChange}
+              />
+            </FilterField>
+            <FilterField>
+              <FieldLabel htmlFor="filter-category">Categoria</FieldLabel>
+              <Select
+                id="filter-category"
+                name="category"
+                value={filters.category}
+                onChange={handleFilterSelectChange}
+              >
+                <option value="all">Todas as categorias</option>
+                {CATEGORY_ORDER.map((category) => (
+                  <option key={category} value={category}>
+                    {CATEGORY_LABEL[category]}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+            <FilterField>
+              <FieldLabel htmlFor="filter-status">Status</FieldLabel>
+              <Select
+                id="filter-status"
+                name="status"
+                value={filters.status}
+                onChange={handleFilterSelectChange}
+              >
+                <option value="all">Todos os status</option>
+                {STATUS_OPTIONS.map((status) => (
+                  <option key={status} value={status}>
+                    {STATUS_BADGE[status]?.label ?? status}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+            <FilterField>
+              <FieldLabel htmlFor="filter-owner">Responsável</FieldLabel>
+              <Select
+                id="filter-owner"
+                name="owner"
+                value={filters.owner}
+                onChange={handleFilterSelectChange}
+              >
+                <option value="all">Todos os responsáveis</option>
+                <option value="__none">Sem responsável</option>
+                {supportUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.full_name}
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+            <FilterActions>
+              <Button type="button" variant="ghost" onClick={handleResetFilters}>
+                Limpar filtros
+              </Button>
+            </FilterActions>
+          </FilterToolbar>
+        </Card>
 
       <CategoryStack>
         {loading && !assets.length ? (
