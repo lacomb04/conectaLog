@@ -516,72 +516,37 @@ const InlineError = styled.p`
   color: #b91c1c;
 `;
 
-const AttentionGrid = styled.div`
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-`;
-
-const AttentionTile = styled.div`
-  border-radius: 18px;
-  border: 1px solid #e2e8f0;
-  padding: 16px 18px;
-  background: #f8fafc;
+const AttentionSummaryRow = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 4px;
 `;
 
-const AttentionLabel = styled.span`
+const AttentionSummaryChip = styled.span<{ $alert?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 600;
-  color: #475569;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  background: ${({ $alert }) =>
+    $alert ? "rgba(248,113,113,0.16)" : "rgba(37,99,235,0.12)"};
+  color: ${({ $alert }) => ($alert ? "#b91c1c" : "#1d4ed8")};
+  border: 1px solid
+    ${({ $alert }) => ($alert ? "rgba(239,68,68,0.35)" : "rgba(37,99,235,0.25)")};
 `;
 
-const AttentionValue = styled.span<{ alert?: boolean }>`
-  font-size: 1.9rem;
+const AttentionSummaryValue = styled.span`
+  font-size: 0.9rem;
   font-weight: 700;
-  color: ${({ alert }) => (alert ? "#dc2626" : "#15803d")};
 `;
 
-const AttentionList = styled.ul`
-  list-style: none;
-  padding: 0;
-  margin: 18px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const AttentionItem = styled.li`
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 14px 16px;
-  background: #ffffff;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
-
-const AttentionItemHeader = styled.div`
-  display: flex;
+const AttentionFlagGroup = styled.div`
+  display: inline-flex;
   flex-wrap: wrap;
-  gap: 8px;
-  justify-content: space-between;
-  align-items: baseline;
-`;
-
-const AttentionFlags = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-`;
-
-const AttentionAssetMeta = styled.span`
-  font-size: 0.82rem;
-  color: #64748b;
+  gap: 6px;
 `;
 
 const formatDate = (value?: string | null) => {
@@ -944,6 +909,23 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     }
   }, [fetchAssets, refreshing]);
 
+  const describeNextAction = useCallback((asset: AssetRecord) => {
+    if (asset.license_expiry) {
+      return `Renovar até ${formatDate(asset.license_expiry)}`;
+    }
+    if (asset.next_maintenance_date) {
+      return `Planejar manutenção para ${formatDate(
+        asset.next_maintenance_date
+      )}`;
+    }
+    if (asset.last_maintenance_date) {
+      return `Última manutenção em ${formatDate(
+        asset.last_maintenance_date
+      )}`;
+    }
+    return "—";
+  }, []);
+
   const indicators = useMemo(() => {
     if (!assets.length) {
       return {
@@ -1080,6 +1062,39 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
 
     return { metrics, flagged };
   }, [assets]);
+
+  const attentionSummaryChips = useMemo(
+    () => {
+      const metrics = attentionSummary.metrics;
+      return [
+        {
+          key: "pendingInventory",
+          label: "Inventário pendente",
+          value: metrics.pendingInventory ?? 0,
+          alert: true,
+        },
+        {
+          key: "expiringLicense",
+          label: "Licenças a vencer (30 dias)",
+          value: metrics.expiringLicense ?? 0,
+          alert: true,
+        },
+        {
+          key: "maintenanceDue",
+          label: "Manutenções em atraso",
+          value: metrics.maintenanceDue ?? 0,
+          alert: true,
+        },
+        {
+          key: "obsolete",
+          label: "Ativos obsoletos",
+          value: metrics.obsolete ?? 0,
+          alert: true,
+        },
+      ];
+    },
+    [attentionSummary.metrics]
+  );
 
   const filteredAssets = useMemo(() => {
     const term = filters.search.trim().toLowerCase();
@@ -1599,91 +1614,6 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       <MetricsGrid>
         <Card>
           <CardHeaderBlock>
-            <CardTitleLabel>Ativos que exigem atenção</CardTitleLabel>
-            <CardSubtitle>
-              Indicadores de licenças, manutenções e inventário que precisam de ação.
-            </CardSubtitle>
-          </CardHeaderBlock>
-          {!assets.length ? (
-            <EmptyState>Carregue o inventário para visualizar os indicadores críticos.</EmptyState>
-          ) : (
-            <>
-              <AttentionGrid>
-                <AttentionTile>
-                  <AttentionLabel>Inventário pendente</AttentionLabel>
-                  <AttentionValue alert={attentionSummary.metrics.pendingInventory > 0}>
-                    {attentionSummary.metrics.pendingInventory}
-                  </AttentionValue>
-                </AttentionTile>
-                <AttentionTile>
-                  <AttentionLabel>Licenças a vencer (30 dias)</AttentionLabel>
-                  <AttentionValue alert={attentionSummary.metrics.expiringLicense > 0}>
-                    {attentionSummary.metrics.expiringLicense}
-                  </AttentionValue>
-                </AttentionTile>
-                <AttentionTile>
-                  <AttentionLabel>Manutenções em atraso</AttentionLabel>
-                  <AttentionValue alert={attentionSummary.metrics.maintenanceDue > 0}>
-                    {attentionSummary.metrics.maintenanceDue}
-                  </AttentionValue>
-                </AttentionTile>
-                <AttentionTile>
-                  <AttentionLabel>Ativos obsoletos</AttentionLabel>
-                  <AttentionValue alert={attentionSummary.metrics.obsolete > 0}>
-                    {attentionSummary.metrics.obsolete}
-                  </AttentionValue>
-                </AttentionTile>
-              </AttentionGrid>
-
-              {attentionSummary.flagged.length ? (
-                <AttentionList>
-                  {attentionSummary.flagged.slice(0, 6).map(({ asset, flags }, index) => {
-                    const statusMeta =
-                      STATUS_BADGE[asset.status] ?? {
-                        label: asset.status,
-                        tone: "neutral" as const,
-                      };
-                    return (
-                      <AttentionItem key={`${asset.id}-${index}`}>
-                        <AttentionItemHeader>
-                          <span style={{ fontWeight: 600 }}>
-                            {asset.asset_code} • {asset.name}
-                          </span>
-                          <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
-                        </AttentionItemHeader>
-                        <AttentionAssetMeta>
-                          {CATEGORY_LABEL[asset.category]} • {asset.location || "Local não informado"}
-                        </AttentionAssetMeta>
-                        <AttentionAssetMeta>
-                          Próxima manutenção: {formatDate(asset.next_maintenance_date)} • Licença: {formatDate(asset.license_expiry)}
-                        </AttentionAssetMeta>
-                        <AttentionFlags>
-                          {flags.map((flag, flagIndex) => (
-                            <Badge
-                              key={`${asset.id}-flag-${flagIndex}`}
-                              tone={
-                                flag.includes("vencid") || flag.includes("atraso")
-                                  ? "danger"
-                                  : "warning"
-                              }
-                            >
-                              {flag}
-                            </Badge>
-                          ))}
-                        </AttentionFlags>
-                      </AttentionItem>
-                    );
-                  })}
-                </AttentionList>
-              ) : (
-                <EmptyState>Todos os ativos estão em dia no momento.</EmptyState>
-              )}
-            </>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeaderBlock>
             <CardTitleLabel>Ativos inventariados</CardTitleLabel>
             <CardSubtitle>Percentual em relação ao parque total</CardSubtitle>
           </CardHeaderBlock>
@@ -1716,6 +1646,93 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           </MetricValue>
         </Card>
       </MetricsGrid>
+
+      <Card>
+        <CardHeaderBlock>
+          <CardTitleLabel>Ativos que exigem atenção</CardTitleLabel>
+          <CardSubtitle>
+            Indicadores de licenças, manutenções e inventário que precisam de ação.
+          </CardSubtitle>
+        </CardHeaderBlock>
+        {!assets.length ? (
+          <EmptyState>Carregue o inventário para visualizar os indicadores críticos.</EmptyState>
+        ) : (
+          <>
+            <AttentionSummaryRow>
+              {attentionSummaryChips.map((chip) => (
+                <AttentionSummaryChip
+                  key={chip.key}
+                  $alert={chip.value > 0 && chip.alert}
+                >
+                  <span>{chip.label}</span>
+                  <AttentionSummaryValue>{chip.value}</AttentionSummaryValue>
+                </AttentionSummaryChip>
+              ))}
+            </AttentionSummaryRow>
+            {attentionSummary.flagged.length ? (
+              <TableWrapper>
+                <StyledTable>
+                  <thead>
+                    <tr>
+                      <TableHeadCell>Código</TableHeadCell>
+                      <TableHeadCell>Ativo</TableHeadCell>
+                      <TableHeadCell>Status</TableHeadCell>
+                      <TableHeadCell>Próxima ação</TableHeadCell>
+                      <TableHeadCell>Alertas</TableHeadCell>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attentionSummary.flagged.map(({ asset, flags }) => {
+                      const statusMeta =
+                        STATUS_BADGE[asset.status] ?? {
+                          label: asset.status,
+                          tone: "neutral" as const,
+                        };
+                      const nextAction = describeNextAction(asset);
+                      return (
+                        <TableRow key={asset.id}>
+                          <TableCell>{asset.asset_code}</TableCell>
+                          <TableCell>
+                            <AssetName>{asset.name}</AssetName>
+                            <AssetMeta>
+                              {CATEGORY_LABEL[asset.category]} • {asset.location || "Local não informado"}
+                            </AssetMeta>
+                            <AssetMeta>
+                              Ciclo de vida: {LIFECYCLE_LABEL[asset.lifecycle_stage]}
+                            </AssetMeta>
+                          </TableCell>
+                          <TableCell>
+                            <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+                          </TableCell>
+                          <TableCell>{nextAction}</TableCell>
+                          <TableCell>
+                            <AttentionFlagGroup>
+                              {flags.map((flag, index) => (
+                                <Badge
+                                  key={`${asset.id}-flag-${index}`}
+                                  tone={
+                                    flag.includes("vencid") || flag.includes("atraso")
+                                      ? "danger"
+                                      : "warning"
+                                  }
+                                >
+                                  {flag}
+                                </Badge>
+                              ))}
+                            </AttentionFlagGroup>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </tbody>
+                </StyledTable>
+              </TableWrapper>
+            ) : (
+              <EmptyState>Todos os ativos estão em dia no momento.</EmptyState>
+            )}
+          </>
+        )}
+      </Card>
 
       <Card>
         <CardHeaderBlock>
@@ -2150,11 +2167,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                                 },
                               ]
                             : supportUsers;
-                        const nextAction = asset.license_expiry
-                          ? `Renovar até ${formatDate(asset.license_expiry)}`
-                          : asset.next_maintenance_date
-                          ? `Planejado para ${formatDate(asset.next_maintenance_date)}`
-                          : "—";
+                        const nextAction = describeNextAction(asset);
                         const editingThisAsset = editingAssetId === asset.id;
 
                         const inlineActive = inlineEditingId === asset.id;

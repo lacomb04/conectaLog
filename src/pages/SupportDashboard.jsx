@@ -72,6 +72,12 @@ const ASSET_CATEGORY_LABELS = {
   mobile: "Dispositivos móveis",
 };
 
+const RAW_API_BASE = (import.meta.env?.VITE_API_BASE_URL || "").trim();
+const API_BASE_URL = RAW_API_BASE.endsWith("/")
+  ? RAW_API_BASE.slice(0, -1)
+  : RAW_API_BASE;
+const apiUrl = (path) => (API_BASE_URL ? `${API_BASE_URL}${path}` : path);
+
 const Tile = styled(Card)`
   width: 100%;
   border-radius: 32px;
@@ -646,49 +652,97 @@ export default function SupportDashboard({
 
     setAssetsLoading(true);
     setAssetsError("");
+
+    const headers = {
+      "X-Asset-User-Id": user.id,
+      "X-Asset-User-Role": (user.role || "support").toString().toLowerCase(),
+    };
+    if (user.email) {
+      headers["X-Asset-User-Email"] = user.email;
+    }
+
+    let handled = false;
+
     try {
-      const { data, error } = await supabase
-        .from("assets")
-        .select(
-          [
-            "id",
-            "asset_code",
-            "name",
-            "category",
-            "status",
-            "lifecycle_stage",
-            "last_maintenance_date",
-            "next_maintenance_date",
-            "license_expiry",
-            "inventoried",
-            "location",
-            "acquisition_date",
-          ].join(",")
-        )
-        .eq("support_owner", user.id)
-        .order("name", { ascending: true });
+      const response = await fetch(apiUrl("/api/assets?scope=assigned"), {
+        headers,
+      });
 
-      if (!assetsMountedRef.current) return;
-
-      if (error) {
-        console.error("Erro ao carregar ativos do suporte:", error);
-        setAssetsError("Não foi possível carregar os ativos: " + error.message);
-        setAssignedAssets([]);
+      if (response.ok) {
+        const payload = await response.json();
+        const rows = Array.isArray(payload?.data) ? payload.data : [];
+        if (!assetsMountedRef.current) {
+          setAssetsLoading(false);
+          return;
+        }
+        const normalized = rows.map((asset) => ({
+          ...asset,
+          category: asset.category || "hardware",
+          status: asset.status || "em uso",
+        }));
+        setAssignedAssets(normalized);
+        handled = true;
       } else {
-        setAssignedAssets(data || []);
+        console.warn(
+          "Suporte: falha ao buscar ativos via API",
+          response.status,
+          response.statusText
+        );
       }
-    } catch (cause) {
-      console.error("Erro inesperado ao buscar ativos:", cause);
-      if (assetsMountedRef.current) {
-        setAssetsError("Erro inesperado ao buscar os ativos atribuídos.");
-        setAssignedAssets([]);
-      }
-    } finally {
-      if (assetsMountedRef.current) {
-        setAssetsLoading(false);
+    } catch (apiError) {
+      console.warn("Suporte: erro ao buscar ativos via API", apiError);
+    }
+
+    if (!handled) {
+      try {
+        const { data, error } = await supabase
+          .from("assets")
+          .select(
+            [
+              "id",
+              "asset_code",
+              "name",
+              "category",
+              "status",
+              "lifecycle_stage",
+              "last_maintenance_date",
+              "next_maintenance_date",
+              "license_expiry",
+              "inventoried",
+              "location",
+              "acquisition_date",
+            ].join(",")
+          )
+          .eq("support_owner", user.id)
+          .order("name", { ascending: true });
+
+        if (!assetsMountedRef.current) {
+          setAssetsLoading(false);
+          return;
+        }
+
+        if (error) {
+          console.error("Erro ao carregar ativos do suporte:", error);
+          setAssetsError(
+            "Não foi possível carregar os ativos: " + error.message
+          );
+          setAssignedAssets([]);
+        } else {
+          setAssignedAssets(data || []);
+        }
+      } catch (cause) {
+        console.error("Erro inesperado ao buscar ativos:", cause);
+        if (assetsMountedRef.current) {
+          setAssetsError("Erro inesperado ao buscar os ativos atribuídos.");
+          setAssignedAssets([]);
+        }
       }
     }
-  }, [user?.id]);
+
+    if (assetsMountedRef.current) {
+      setAssetsLoading(false);
+    }
+  }, [user?.id, user?.role, user?.email]);
 
   const formatDuration = (ms) => {
     if (ms <= 0) return "00:00:00";
