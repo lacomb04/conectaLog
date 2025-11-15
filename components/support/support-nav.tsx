@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { LifeBuoy, LayoutDashboard, Ticket, BarChart3, LogOut } from "lucide-react"
+import { LifeBuoy, LayoutDashboard, Ticket, BarChart3, Boxes, LogOut } from "lucide-react"
 
 interface SupportNavProps {
   user: User
@@ -41,6 +41,12 @@ export function SupportNav({ user }: SupportNavProps) {
                 <Button variant="ghost" size="sm">
                   <Ticket className="h-4 w-4 mr-2" />
                   Tickets
+                </Button>
+              </Link>
+              <Link href="/support/assets">
+                <Button variant="ghost" size="sm">
+                  <Boxes className="h-4 w-4 mr-2" />
+                  Ativos
                 </Button>
               </Link>
               <Link href="/support/analytics">

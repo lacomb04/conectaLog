@@ -14,6 +14,7 @@ import TicketDetail from "./pages/TicketDetail";
 import SupportDashboard from "./pages/SupportDashboard";
 import BI from "./pages/BI";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminTickets from "./pages/AdminTickets";
 import supabase from "./services/supabaseClient"; // novo import
 
 function Shell({ user, setUser }) {
@@ -79,6 +80,15 @@ function Shell({ user, setUser }) {
   const onHome = () => navigate("/");
   const onLogout = () => setUser(null);
 
+  const navLinks =
+    user.role === "admin"
+      ? [
+          { to: "/tickets", label: "Chamados" },
+          { to: "/ativos", label: "Ativos" },
+          { to: "/bi", label: "Painel BI" },
+        ]
+      : [];
+
   return (
     <Layout
       onHome={onHome}
@@ -90,6 +100,7 @@ function Shell({ user, setUser }) {
           ? "Buscar meus chamados..."
           : "Buscar chamados..."
       }
+      navLinks={navLinks}
     >
       <Routes>
         {user.role === "employee" && (
@@ -115,13 +126,15 @@ function Shell({ user, setUser }) {
         )}
         {user.role === "admin" && (
           <>
+            <Route path="/" element={<Navigate to="/tickets" replace />} />
             <Route
-              path="/"
-              element={<AdminDashboard user={user} searchTerm={searchTerm} />}
+              path="/tickets"
+              element={<AdminTickets user={user} searchTerm={searchTerm} />}
             />
+            <Route path="/ativos" element={<AdminDashboard user={user} />} />
             <Route path="/ticket/:id" element={<TicketDetail user={user} />} />
             <Route path="/bi" element={<BI user={user} />} />
-            <Route path="*" element={<Navigate to="/" />} />
+            <Route path="*" element={<Navigate to="/tickets" replace />} />
           </>
         )}
       </Routes>

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../services/supabaseClient";
-import SupportDashboard from "./SupportDashboard";
 import { useNavigate } from "react-router-dom";
 import AssetManagement from "../components/admin/asset-management";
 
@@ -80,12 +79,10 @@ const normalizeUser = (raw: any) => {
 
 type AdminDashboardProps = {
   user: any;
-  searchTerm?: string;
 };
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({
   user: initialUser,
-  searchTerm = "",
 }) => {
   const normalizedInitialUser = useMemo(
     () => normalizeUser(initialUser),
@@ -239,50 +236,83 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   if (loading) return <div>Loading...</div>;
   if (!user) return <div>Nenhum usuário autenticado.</div>;
 
-  const headerActions: React.ReactNode = (
-    <>
-      <button
-        onClick={() => navigate("/bi")}
-        style={{
-          padding: "8px 16px",
-          borderRadius: 999,
-          border: "none",
-          cursor: "pointer",
-          background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
-          color: "#fff",
-          fontWeight: 600,
-        }}
-      >
-        Abrir painel BI
-      </button>
-      <button
-        onClick={() => setKbOpen(true)}
-        style={{
-          padding: "8px 16px",
-          borderRadius: 999,
-          border: "none",
-          cursor: "pointer",
-          background: "linear-gradient(135deg,#6366f1,#4338ca)",
-          color: "#fff",
-          fontWeight: 600,
-        }}
-      >
-        Alimentar ConectaBot
-      </button>
-    </>
-  );
-
   return (
     <>
-      <SupportDashboard
-        user={user}
-        searchTerm={searchTerm}
-        extraHeaderActions={headerActions}
-      />
+      <section
+        style={{
+          padding: "32px 24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 24,
+        }}
+      >
+        <header
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+          }}
+        >
+          <div style={{ minWidth: 260 }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: "2rem",
+                fontWeight: 700,
+                color: "#0f172a",
+              }}
+            >
+              Gestão de Ativos e Conhecimento
+            </h1>
+            <p style={{ marginTop: 6, color: "#475569" }}>
+              Cadastre ativos, acompanhe indicadores críticos e mantenha o ConectaBot atualizado.
+            </p>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              onClick={() => navigate("/bi")}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 999,
+                border: "none",
+                cursor: "pointer",
+                background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
+                color: "#fff",
+                fontWeight: 600,
+                boxShadow: "0 12px 30px rgba(14,165,233,0.24)",
+              }}
+            >
+              Abrir painel BI
+            </button>
+            <button
+              onClick={() => setKbOpen(true)}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 999,
+                border: "none",
+                cursor: "pointer",
+                background: "linear-gradient(135deg,#6366f1,#4338ca)",
+                color: "#fff",
+                fontWeight: 600,
+                boxShadow: "0 12px 30px rgba(99,102,241,0.28)",
+              }}
+            >
+              Alimentar ConectaBot
+            </button>
+          </div>
+        </header>
 
-      <div style={{ padding: "32px 24px" }}>
         <AssetManagement currentUser={user} />
-      </div>
+      </section>
 
       {kbOpen && (
         <div style={backdropStyle}>

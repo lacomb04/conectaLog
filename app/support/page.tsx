@@ -1,5 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server"
-import { SupportDashboard } from "@/components/support/support-dashboard"
+import { SupportTicketsDashboard } from "@/components/support/support-tickets-dashboard"
 
 export default async function SupportPage() {
   const supabase = await getSupabaseServerClient()
@@ -19,26 +19,10 @@ export default async function SupportPage() {
 
   const { data: users } = await supabase.from("users").select("*").in("role", ["support", "admin"])
 
-  let assetsQuery = supabase
-    .from("assets")
-    .select(
-      "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)"
-    )
-    .order("category", { ascending: true })
-    .order("name", { ascending: true })
-
-  if (viewerProfile?.role === "support") {
-    assetsQuery = assetsQuery.eq("support_owner", viewerProfile.id)
-  }
-
-  const { data: assignedAssets } = await assetsQuery
-
   return (
-    <SupportDashboard
+    <SupportTicketsDashboard
       initialTickets={tickets || []}
       supportUsers={users || []}
-      assignedAssets={assignedAssets || []}
-      currentUser={viewerProfile || null}
     />
   )
 }
