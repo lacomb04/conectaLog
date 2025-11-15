@@ -138,6 +138,18 @@ export function SupportDashboard({ initialTickets, supportUsers }: SupportDashbo
 
   const handleStatusChange = async (ticketId: string, newStatus: string) => {
     try {
+      if (newStatus === "closed") {
+        const current = tickets.find((t) => t.id === ticketId)
+        if (current && current.status !== "closed") {
+          toast({
+            title: "Aguarde a confirmação do colaborador",
+            description: "Somente o funcionário pode encerrar o ticket após avaliar a solução.",
+            variant: "destructive",
+          })
+          return
+        }
+      }
+
       const updateData: any = { status: newStatus }
 
       if (newStatus === "resolved") {
@@ -287,6 +299,7 @@ export function SupportDashboard({ initialTickets, supportUsers }: SupportDashbo
                       <div className="flex items-center gap-2 mb-2">
                         <span className="text-sm font-mono text-muted-foreground">{ticket.ticket_number}</span>
                         <Badge className={priorityColors[ticket.priority]}>{priorityLabels[ticket.priority]}</Badge>
+                        <Badge className={statusColors[ticket.status]}>{statusLabels[ticket.status]}</Badge>
                         {isOverdue && (
                           <Badge className="bg-red-500/10 text-red-700 dark:text-red-400">
                             <AlertTriangle className="h-3 w-3 mr-1" />
@@ -298,6 +311,16 @@ export function SupportDashboard({ initialTickets, supportUsers }: SupportDashbo
                         <h3 className="text-xl font-semibold hover:text-primary cursor-pointer">{ticket.title}</h3>
                       </Link>
                       <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{ticket.description}</p>
+                      {ticket.status === "resolved" && (
+                        <p className="text-xs text-amber-600 mt-2 font-medium">
+                          Aguardando confirmação do colaborador
+                        </p>
+                      )}
+                      {ticket.status === "closed" && ticket.resolution_rating != null && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Avaliação do colaborador: {ticket.resolution_rating}/5
+                        </p>
+                      )}
                       <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
                         <span>Criado por: {ticket.creator?.full_name}</span>
                         <span>
@@ -318,7 +341,9 @@ export function SupportDashboard({ initialTickets, supportUsers }: SupportDashbo
                           <SelectItem value="in_progress">Em Andamento</SelectItem>
                           <SelectItem value="waiting_response">Aguardando Resposta</SelectItem>
                           <SelectItem value="resolved">Resolvido</SelectItem>
-                          <SelectItem value="closed">Fechado</SelectItem>
+                          <SelectItem value="closed" disabled={ticket.status !== "closed"}>
+                            Fechado
+                          </SelectItem>
                         </SelectContent>
                       </Select>
 

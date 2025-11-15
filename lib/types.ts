@@ -34,6 +34,10 @@ export interface Ticket {
   responded_at?: string
   resolved_at?: string
   closed_at?: string
+  resolution_rating?: number
+  resolution_feedback?: string
+  resolution_confirmed_at?: string
+  resolution_confirmed_by?: string
   created_at: string
   updated_at: string
   creator?: User

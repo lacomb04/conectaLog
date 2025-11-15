@@ -77,6 +77,12 @@ export function TicketList({ tickets }: TicketListProps) {
                     </div>
                     <CardTitle className="text-xl">{ticket.title}</CardTitle>
                     <CardDescription className="mt-1 line-clamp-2">{ticket.description}</CardDescription>
+                    {ticket.status === "resolved" && (
+                      <p className="text-sm text-primary mt-2">Avalie a solução para encerrar o ticket.</p>
+                    )}
+                    {ticket.status === "closed" && ticket.resolution_rating != null && (
+                      <p className="text-sm text-muted-foreground mt-2">Sua avaliação: {ticket.resolution_rating}/5</p>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <Badge className={statusColors[ticket.status]}>

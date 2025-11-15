@@ -87,6 +87,16 @@ export function SupportTicketList({ tickets }: SupportTicketListProps) {
                       </div>
                       <h3 className="text-lg font-semibold">{ticket.title}</h3>
                       <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{ticket.description}</p>
+                      {ticket.status === "resolved" && (
+                        <p className="text-xs text-amber-600 mt-2 font-medium">
+                          Aguardando confirmação do colaborador
+                        </p>
+                      )}
+                      {ticket.status === "closed" && ticket.resolution_rating != null && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Avaliação do colaborador: {ticket.resolution_rating}/5
+                        </p>
+                      )}
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                         <span>Criado por: {ticket.creator?.full_name}</span>
                         <span>

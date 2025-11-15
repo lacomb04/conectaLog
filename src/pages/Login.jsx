@@ -68,7 +68,7 @@ export default function Login({ onLogin }) {
               fontSize: "1.4rem",
             }}
           >
-            CL
+            MS
           </div>
         </div>
         <Card
@@ -86,7 +86,7 @@ export default function Login({ onLogin }) {
               marginBottom: "var(--space-2)",
             }}
           >
-            ConectaLog
+            MinasSul
           </h1>
           <p
             style={{

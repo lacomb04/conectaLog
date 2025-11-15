@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useEffect, useState, useRef } from "react"
-import type { Ticket, Message, User, TicketHistory } from "@/lib/types"
+import type { Ticket, Message, User, TicketHistory, TicketStatus } from "@/lib/types"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/hooks/use-toast"
 import { formatDistanceToNow, format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { ArrowLeft, Send, Clock, UserIcon, Lock } from "lucide-react"
+import { ArrowLeft, Send, Clock, UserIcon, Lock, Star, CheckCircle2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
@@ -61,10 +61,19 @@ export function TicketDetail({ ticket, initialMessages, currentUser, isSupport, 
   const [newMessage, setNewMessage] = useState("")
   const [isInternal, setIsInternal] = useState(false)
   const [sending, setSending] = useState(false)
+  const [ticketStatus, setTicketStatus] = useState<TicketStatus>(ticket.status)
+  const [ticketRating, setTicketRating] = useState<number | null>(ticket.resolution_rating ?? null)
+  const [ticketFeedback, setTicketFeedback] = useState(ticket.resolution_feedback ?? "")
+  const [confirmationAt, setConfirmationAt] = useState<string | null>(ticket.resolution_confirmed_at ?? null)
+  const [ratingInput, setRatingInput] = useState<number>(ticket.resolution_rating ?? 5)
+  const [feedbackInput, setFeedbackInput] = useState(ticket.resolution_feedback ?? "")
+  const [confirmingResolution, setConfirmingResolution] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = getSupabaseBrowserClient()
   const { toast } = useToast()
   const router = useRouter()
+
+  const ratingScale = [1, 2, 3, 4, 5]
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -109,6 +118,15 @@ export function TicketDetail({ ticket, initialMessages, currentUser, isSupport, 
     }
   }, [supabase, ticket.id, isSupport])
 
+  useEffect(() => {
+    setTicketStatus(ticket.status)
+    setTicketRating(ticket.resolution_rating ?? null)
+    setTicketFeedback(ticket.resolution_feedback ?? "")
+    setConfirmationAt(ticket.resolution_confirmed_at ?? null)
+    setRatingInput(ticket.resolution_rating ?? 5)
+    setFeedbackInput(ticket.resolution_feedback ?? "")
+  }, [ticket.status, ticket.resolution_rating, ticket.resolution_feedback, ticket.resolution_confirmed_at])
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -149,6 +167,50 @@ export function TicketDetail({ ticket, initialMessages, currentUser, isSupport, 
     }
   }
 
+  const handleConfirmResolution = async () => {
+    setConfirmingResolution(true)
+    const sanitizedRating = Math.min(5, Math.max(1, ratingInput))
+    const sanitizedFeedback = feedbackInput.trim()
+    const now = new Date().toISOString()
+
+    try {
+      const { error } = await supabase
+        .from("tickets")
+        .update({
+          status: "closed",
+          resolution_rating: sanitizedRating,
+          resolution_feedback: sanitizedFeedback || null,
+          resolution_confirmed_at: now,
+          resolution_confirmed_by: currentUser.id,
+          closed_at: now,
+        })
+        .eq("id", ticket.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Obrigado pela avaliação!",
+        description: "O ticket foi encerrado com sucesso.",
+      })
+
+      setTicketStatus("closed")
+      setTicketRating(sanitizedRating)
+      setTicketFeedback(sanitizedFeedback)
+      setConfirmationAt(now)
+      setRatingInput(sanitizedRating)
+      setFeedbackInput(sanitizedFeedback)
+      router.refresh()
+    } catch (error: any) {
+      toast({
+        title: "Não foi possível concluir",
+        description: error.message,
+        variant: "destructive",
+      })
+    } finally {
+      setConfirmingResolution(false)
+    }
+  }
+
   const slaResponseTime = ticket.sla_response_time
     ? `${Math.floor(ticket.sla_response_time / 60)}h ${ticket.sla_response_time % 60}m`
     : "N/A"
@@ -176,9 +238,14 @@ export function TicketDetail({ ticket, initialMessages, currentUser, isSupport, 
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-mono text-muted-foreground">{ticket.ticket_number}</span>
                     <Badge className={priorityColors[ticket.priority]}>{priorityLabels[ticket.priority]}</Badge>
-                    <Badge className={statusColors[ticket.status]}>{statusLabels[ticket.status]}</Badge>
+                    <Badge className={statusColors[ticketStatus]}>{statusLabels[ticketStatus]}</Badge>
                   </div>
                   <CardTitle className="text-2xl">{ticket.title}</CardTitle>
+                  {ticketStatus === "resolved" && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Aguardando confirmação do colaborador para encerrar o ticket.
+                    </p>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -300,6 +367,58 @@ export function TicketDetail({ ticket, initialMessages, currentUser, isSupport, 
               </div>
             </CardContent>
           </Card>
+
+          {!isSupport && ticketStatus === "resolved" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Confirme se o problema foi resolvido</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Avalie o atendimento e finalize o chamado caso tudo esteja funcionando corretamente.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-sm font-medium">Como você avalia a solução?</Label>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {ratingScale.map((value) => (
+                      <Button
+                        key={value}
+                        type="button"
+                        size="sm"
+                        variant={ratingInput === value ? "default" : "outline"}
+                        onClick={() => setRatingInput(value)}
+                      >
+                        {value}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="resolution-feedback" className="text-sm font-medium">
+                    Deixe um comentário (opcional)
+                  </Label>
+                  <Textarea
+                    id="resolution-feedback"
+                    placeholder="Compartilhe informações que possam ajudar o time de suporte"
+                    value={feedbackInput}
+                    onChange={(event) => setFeedbackInput(event.target.value)}
+                    rows={4}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <p className="text-xs text-muted-foreground flex-1">
+                    Se o problema persistir, descreva abaixo na conversa ou solicite ajuda novamente.
+                  </p>
+                  <Button onClick={handleConfirmResolution} disabled={confirmingResolution} className="sm:w-auto">
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    {confirmingResolution ? "Enviando..." : "Confirmar resolução"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Sidebar */}
@@ -343,6 +462,32 @@ export function TicketDetail({ ticket, initialMessages, currentUser, isSupport, 
               </div>
             </CardContent>
           </Card>
+
+          {ticketRating !== null && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Avaliação do colaborador</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 text-primary">
+                    {Array.from({ length: Math.max(0, Math.round(ticketRating)) }).map((_, index) => (
+                      <Star key={index} className="h-4 w-4 fill-current" />
+                    ))}
+                  </div>
+                  <span className="text-sm font-semibold">{ticketRating}/5</span>
+                </div>
+                {ticketFeedback && (
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{ticketFeedback}</p>
+                )}
+                {confirmationAt && (
+                  <p className="text-xs text-muted-foreground">
+                    Confirmado em {format(new Date(confirmationAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* History (Support only) */}
           {isSupport && history && history.length > 0 && (
