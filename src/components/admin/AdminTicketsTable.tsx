@@ -480,17 +480,23 @@ const AdminTicketsTable: React.FC<AdminTicketsTableProps> = ({
           <FilterInput
             placeholder="Filtrar por status"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setStatusFilter(event.target.value)
+            }
           />
           <FilterInput
             placeholder="Filtrar por prioridade"
             value={priorityFilter}
-            onChange={(event) => setPriorityFilter(event.target.value)}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setPriorityFilter(event.target.value)
+            }
           />
           <FilterInput
             placeholder="Filtrar por categoria"
             value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setCategoryFilter(event.target.value)
+            }
           />
         </Filters>
 
