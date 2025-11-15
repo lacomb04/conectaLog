@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "../services/supabaseClient";
 import SupportDashboard from "./SupportDashboard";
 import { useNavigate } from "react-router-dom";
+import AssetManagement from "../components/admin/asset-management";
 
 const knowledgeTable =
   import.meta.env.VITE_CONECTABOT_KB_TABLE || "ai_knowledge";
@@ -245,6 +246,10 @@ const AdminDashboard: React.FC<{ searchTerm?: string }> = ({
         searchTerm={searchTerm}
         extraHeaderActions={headerActions}
       />
+
+      <div style={{ padding: "32px 24px" }}>
+        <AssetManagement />
+      </div>
 
       {kbOpen && (
         <div style={backdropStyle}>
