@@ -7,10 +7,14 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const OPENAI_KEY = process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
 const SUPABASE_URL =
-  process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+  process.env.SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "";
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SERVICE_KEY ||
+  process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
   "";
 
 const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
