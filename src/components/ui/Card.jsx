@@ -8,6 +8,6 @@ const Wrap = styled.div`
   box-shadow: var(--shadow);
   padding: var(--space-5);
 `;
-export default function Card({ children, style }) {
+export default function Card({ children, style = undefined }) {
   return <Wrap style={style}>{children}</Wrap>;
 }
