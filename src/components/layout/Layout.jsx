@@ -8,6 +8,7 @@ export default function Layout({
   searchValue,
   onSearchChange,
   searchPlaceholder,
+  navLinks = [],
 }) {
   return (
     <>
@@ -17,6 +18,7 @@ export default function Layout({
         searchValue={searchValue}
         onSearchChange={onSearchChange}
         searchPlaceholder={searchPlaceholder}
+        navLinks={navLinks}
       />
       <main className="container section">{children}</main>
     </>
