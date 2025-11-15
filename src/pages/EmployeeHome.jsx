@@ -190,11 +190,16 @@ export default function EmployeeHome({ user, searchTerm }) {
         resolution_confirmed_at: nowIso,
         resolution_confirmed_by: user.id,
       })
-      .eq("id", ratingModal.ticket.id)
+        .eq("id", ratingModal.ticket.id)
       .eq("created_by", user.id);
 
     if (error) {
-      alert("Não foi possível concluir o chamado. Tente novamente.");
+        console.error("ticket close without rating failed", error);
+        alert(
+          `Não foi possível concluir o chamado. Detalhe: ${
+            error.message || "erro desconhecido"
+          }`,
+        );
       setRatingLoading(false);
       return;
     }
@@ -248,11 +253,16 @@ export default function EmployeeHome({ user, searchTerm }) {
         resolution_confirmed_at: nowIso,
         resolution_confirmed_by: user.id,
       })
-      .eq("id", ratingModal.ticket.id)
+        .eq("id", ratingModal.ticket.id)
       .eq("created_by", user.id);
 
     if (error) {
-      alert("Não foi possível concluir o chamado. Tente novamente.");
+        console.error("ticket rating update failed", error);
+        alert(
+          `Não foi possível concluir o chamado. Detalhe: ${
+            error.message || "erro desconhecido"
+          }`,
+        );
       setRatingLoading(false);
       return;
     }
