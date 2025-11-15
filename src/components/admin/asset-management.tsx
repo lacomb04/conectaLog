@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import styled from "styled-components";
@@ -46,6 +47,12 @@ type SupportUser = {
   email: string;
 };
 
+type OwnerInfo = {
+  full_name: string | null;
+  email: string | null;
+  role?: string | null;
+};
+
 type AssetRecord = {
   id: string;
   asset_code: string;
@@ -64,11 +71,6 @@ type AssetRecord = {
   location?: string | null;
   inventoried: boolean;
   support_owner: string | null;
-  support_owner_profile?: {
-    id: string;
-    full_name?: string | null;
-    email?: string | null;
-  } | null;
 };
 
 type AssetFormState = {
@@ -385,6 +387,8 @@ const AssetManagement: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
+  const [ownersMap, setOwnersMap] = useState<Record<string, OwnerInfo>>({});
+  const ownersMapRef = useRef<Record<string, OwnerInfo>>({});
   const [formState, setFormState] = useState<AssetFormState>({
     ...DEFAULT_FORM_STATE,
   });
@@ -392,6 +396,10 @@ const AssetManagement: React.FC = () => {
   const [formStatus, setFormStatus] =
     useState<"idle" | "success" | "error">("idle");
   const [formMessage, setFormMessage] = useState("");
+
+  useEffect(() => {
+    ownersMapRef.current = ownersMap;
+  }, [ownersMap]);
 
   const fetchAssets = useCallback(
     async (mode: "initial" | "refresh" = "initial") => {
@@ -406,30 +414,25 @@ const AssetManagement: React.FC = () => {
         const { data, error } = await supabase
           .from("assets")
           .select(
-            `
-            id,
-            asset_code,
-            name,
-            category,
-            subcategory,
-            description,
-            quantity,
-            status,
-            lifecycle_stage,
-            acquisition_date,
-            last_maintenance_date,
-            next_maintenance_date,
-            warranty_expires_at,
-            license_expiry,
-            location,
-            inventoried,
-            support_owner,
-            support_owner_profile:users!assets_support_owner_fkey (
-              id,
-              full_name,
-              email
-            )
-          `
+            [
+              "id",
+              "asset_code",
+              "name",
+              "category",
+              "subcategory",
+              "description",
+              "quantity",
+              "status",
+              "lifecycle_stage",
+              "acquisition_date",
+              "last_maintenance_date",
+              "next_maintenance_date",
+              "warranty_expires_at",
+              "license_expiry",
+              "location",
+              "inventoried",
+              "support_owner",
+            ].join(",")
           )
           .order("category", { ascending: true })
           .order("name", { ascending: true });
@@ -452,6 +455,43 @@ const AssetManagement: React.FC = () => {
               inventoried: Boolean(item.inventoried),
             } as AssetRecord;
           });
+          const ownerIds = Array.from(
+            new Set(
+              normalized
+                .map((asset) => asset.support_owner)
+                .filter((value): value is string => Boolean(value))
+            )
+          );
+          const missingOwnerIds = ownerIds.filter(
+            (id) => !ownersMapRef.current[id]
+          );
+          if (missingOwnerIds.length) {
+            const { data: ownersData, error: ownersError } = await supabase
+              .from("users")
+              .select("id, full_name, email")
+              .in("id", missingOwnerIds);
+            if (ownersError) {
+              console.warn(
+                "[AssetManagement] owners lookup:",
+                ownersError.message
+              );
+            } else if (ownersData?.length) {
+              setOwnersMap((prev) => {
+                const next = { ...prev };
+                ownersData.forEach((owner: any) => {
+                  next[owner.id] = {
+                    full_name:
+                      typeof owner.full_name === "string" &&
+                      owner.full_name.trim()
+                        ? owner.full_name.trim()
+                        : owner.email || null,
+                    email: owner.email || null,
+                  };
+                });
+                return next;
+              });
+            }
+          }
           setAssets(normalized);
         }
       } catch (cause) {
@@ -491,6 +531,19 @@ const AssetManagement: React.FC = () => {
         email: user.email || "",
       }));
       setSupportUsers(normalized);
+      if (normalized.length) {
+        setOwnersMap((prev) => {
+          const next = { ...prev };
+          normalized.forEach((user) => {
+            next[user.id] = {
+              full_name: user.full_name || null,
+              email: user.email || null,
+              role: "support",
+            };
+          });
+          return next;
+        });
+      }
     } catch (cause) {
       console.warn("[AssetManagement] fetchSupportUsers: unexpected", cause);
     }
@@ -1051,11 +1104,12 @@ const AssetManagement: React.FC = () => {
                             label: asset.status,
                             tone: "neutral" as const,
                           };
-                        const owner = asset.support_owner_profile;
-                        const ownerLabel =
-                          (owner?.full_name && owner.full_name.trim()) ||
-                          owner?.email ||
-                          "—";
+                        const ownerMeta = asset.support_owner
+                          ? ownersMap[asset.support_owner]
+                          : undefined;
+                        const ownerLabel = ownerMeta?.full_name?.trim()
+                          ? ownerMeta.full_name.trim()
+                          : ownerMeta?.email || "—";
                         const nextAction = asset.license_expiry
                           ? `Renovar até ${formatDate(asset.license_expiry)}`
                           : asset.next_maintenance_date
