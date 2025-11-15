@@ -13,6 +13,7 @@ import Badge from "../ui/Badge";
 import Button from "../ui/Button";
 import Select from "../ui/Select";
 import { Input, TextArea } from "../ui/Input";
+import { buildAssetIndicators } from "../../utils/asset-utils";
 
 const RAW_API_BASE = (import.meta.env?.VITE_API_BASE_URL || "").trim();
 const API_BASE_URL = RAW_API_BASE.endsWith("/")
@@ -44,35 +45,36 @@ type LifecycleStage =
   | "use"
   | "maintenance"
   | "disposal";
-
 type AssetStatus = "em uso" | "em manutenção" | "planejado" | "obsoleto";
-
 const STATUS_OPTIONS: AssetStatus[] = [
   "em uso",
   "em manutenção",
   "planejado",
   "obsoleto",
 ];
-
+const LIFECYCLE_LABEL: Record<LifecycleStage, string> = {
+  acquisition: "Aquisição",
+  deployment: "Implantação",
+  use: "Uso",
+  maintenance: "Manutenção",
+  disposal: "Descarte",
+};
 type SupportUser = {
   id: string;
   full_name: string;
   email: string;
 };
-
 type OwnerInfo = {
   full_name: string | null;
   email: string | null;
   role?: string | null;
 };
-
 type CurrentUser = {
   id: string;
   role?: string | null;
   full_name?: string | null;
   email?: string | null;
 };
-
 type AssetRecord = {
   id: string;
   asset_code: string;
@@ -98,19 +100,15 @@ type AssetRecord = {
     role?: string | null;
   } | null;
 };
-
 type FiltersState = {
   search: string;
   category: "all" | AssetCategory;
   owner: "all" | "__none" | string;
   status: "all" | AssetStatus;
 };
-
 const normalizeAsset = (item: any): AssetRecord => {
   const quantity =
-    typeof item?.quantity === "number" && item.quantity > 0
-      ? item.quantity
-      : 1;
+    typeof item?.quantity === "number" && item.quantity > 0 ? item.quantity : 1;
   const ownerProfile = item?.support_owner_profile || null;
   return {
     ...item,
@@ -119,7 +117,6 @@ const normalizeAsset = (item: any): AssetRecord => {
     support_owner_profile: ownerProfile,
   } as AssetRecord;
 };
-
 type AssetFormState = {
   asset_code: string;
   name: string;
@@ -138,7 +135,17 @@ type AssetFormState = {
   support_owner: string;
   inventoried: boolean;
 };
-
+type InlineDraftState = {
+  status: AssetStatus;
+  lifecycle_stage: LifecycleStage;
+  last_maintenance_date: string;
+  next_maintenance_date: string;
+  warranty_expires_at: string;
+  license_expiry: string;
+  location: string;
+  description: string;
+  inventoried: boolean;
+};
 const DEFAULT_FORM_STATE: AssetFormState = {
   asset_code: "",
   name: "",
@@ -157,7 +164,6 @@ const DEFAULT_FORM_STATE: AssetFormState = {
   support_owner: "",
   inventoried: true,
 };
-
 const CATEGORY_LABEL: Record<AssetCategory, string> = {
   hardware: "Hardware",
   software: "Software",
@@ -165,14 +171,6 @@ const CATEGORY_LABEL: Record<AssetCategory, string> = {
   peripherals: "Periféricos",
   licenses: "Licenças",
   mobile: "Dispositivos móveis",
-};
-
-const LIFECYCLE_LABEL: Record<LifecycleStage, string> = {
-  acquisition: "Aquisição",
-  deployment: "Implantação",
-  use: "Uso",
-  maintenance: "Manutenção",
-  disposal: "Descarte",
 };
 
 const LIFECYCLE_DESCRIPTION: Record<LifecycleStage, string> = {
@@ -488,6 +486,104 @@ const EmptyState = styled.p`
   color: #4f5b67;
 `;
 
+const InlineEditor = styled.div`
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+`;
+
+const InlineGrid = styled.div`
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+`;
+
+const InlineActions = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+`;
+
+const InlineError = styled.p`
+  margin: 0;
+  font-size: 0.8rem;
+  color: #b91c1c;
+`;
+
+const AttentionGrid = styled.div`
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+`;
+
+const AttentionTile = styled.div`
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  padding: 16px 18px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
+const AttentionLabel = styled.span`
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+`;
+
+const AttentionValue = styled.span<{ alert?: boolean }>`
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: ${({ alert }) => (alert ? "#dc2626" : "#15803d")};
+`;
+
+const AttentionList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+`;
+
+const AttentionItem = styled.li`
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const AttentionItemHeader = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: baseline;
+`;
+
+const AttentionFlags = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+`;
+
+const AttentionAssetMeta = styled.span`
+  font-size: 0.82rem;
+  color: #64748b;
+`;
+
 const formatDate = (value?: string | null) => {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -538,6 +634,139 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     { tone: "success" | "error"; text: string } | null
   >(null);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [inlineDraft, setInlineDraft] = useState<InlineDraftState | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+
+  const patchAsset = useCallback(
+    async (
+      assetId: string,
+      payload: Record<string, unknown>
+    ): Promise<{ ok: true; asset: AssetRecord } | { ok: false; message: string }> => {
+      try {
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.warn("[AssetManagement] patchAsset getSession:", sessionError.message);
+        }
+
+        const token = sessionData?.session?.access_token || null;
+        const fallbackUser = currentUser && currentUser.id ? currentUser : null;
+        const fallbackRole = fallbackUser?.role
+          ? String(fallbackUser.role).toLowerCase()
+          : null;
+
+        if (!token && !fallbackUser) {
+          return {
+            ok: false,
+            message: "Sessão expirada. Faça login novamente para atualizar o ativo.",
+          };
+        }
+
+        if (!token && fallbackRole !== "admin") {
+          return {
+            ok: false,
+            message: "Somente administradores autenticados podem atualizar ativos.",
+          };
+        }
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        } else if (fallbackUser) {
+          headers["X-Asset-User-Id"] = fallbackUser.id;
+          if (fallbackRole) headers["X-Asset-User-Role"] = fallbackRole;
+          if (fallbackUser.email) headers["X-Asset-User-Email"] = fallbackUser.email;
+        }
+
+        const response = await fetch(
+          apiUrl(`/api/assets?id=${encodeURIComponent(assetId)}`),
+          {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify(payload),
+          }
+        );
+
+        if (!response.ok) {
+          let detail: any = null;
+          try {
+            detail = await response.json();
+          } catch (_ignore) {
+            detail = null;
+          }
+          const message = detail?.error || `Status ${response.status}`;
+          return { ok: false, message };
+        }
+
+        let payloadResponse: { data?: unknown } | null = null;
+        try {
+          payloadResponse = await response.json();
+        } catch (_ignore) {
+          payloadResponse = null;
+        }
+
+        const updatedRaw = payloadResponse?.data ?? null;
+        if (!updatedRaw) {
+          return {
+            ok: false,
+            message: "Resposta inesperada ao atualizar o ativo.",
+          };
+        }
+
+        const updatedAsset = normalizeAsset(updatedRaw);
+        const ownerProfile = updatedAsset.support_owner_profile;
+        if (ownerProfile?.id) {
+          setOwnersMap((prev) => ({
+            ...prev,
+            [ownerProfile.id]: {
+              full_name:
+                typeof ownerProfile.full_name === "string" &&
+                ownerProfile.full_name.trim()
+                  ? ownerProfile.full_name.trim()
+                  : ownerProfile.email || null,
+              email: ownerProfile.email || null,
+              role: ownerProfile.role || null,
+            },
+          }));
+          setSupportUsers((prev) => {
+            if (prev.some((user) => user.id === ownerProfile.id)) {
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                id: ownerProfile.id,
+                full_name:
+                  (typeof ownerProfile.full_name === "string" &&
+                    ownerProfile.full_name.trim()) ||
+                  ownerProfile.email ||
+                  "Sem nome",
+                email: ownerProfile.email || "",
+              },
+            ];
+          });
+        }
+
+        setAssets((prev) =>
+          prev.map((asset) => (asset.id === assetId ? updatedAsset : asset))
+        );
+
+        return { ok: true, asset: updatedAsset };
+      } catch (cause) {
+        console.warn("[AssetManagement] patchAsset unexpected:", cause);
+        return {
+          ok: false,
+          message: "Erro inesperado ao atualizar o ativo.",
+        };
+      }
+    },
+    [currentUser]
+  );
 
   const isEditing = Boolean(editingAssetId);
   const editingAsset = useMemo(() => {
@@ -776,6 +1005,82 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     };
   }, [assets]);
 
+  const attentionSummary = useMemo(() => {
+    if (!assets.length) {
+      return {
+        metrics: buildAssetIndicators([]),
+        flagged: [] as { asset: AssetRecord; flags: string[]; priority: number }[],
+      };
+    }
+
+    const metrics = buildAssetIndicators(assets);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const in30Days = new Date(today);
+    in30Days.setDate(today.getDate() + 30);
+
+    const flagged = assets
+      .map((asset) => {
+        const flags: string[] = [];
+
+        if (!asset.inventoried) {
+          flags.push("Inventário pendente");
+        }
+
+        if (asset.status === "obsoleto") {
+          flags.push("Ativo obsoleto");
+        }
+
+        if (asset.next_maintenance_date) {
+          const next = new Date(asset.next_maintenance_date);
+          if (!Number.isNaN(next.getTime()) && next <= today) {
+            flags.push("Manutenção em atraso");
+          }
+        }
+
+        if (asset.license_expiry) {
+          const expiry = new Date(asset.license_expiry);
+          if (!Number.isNaN(expiry.getTime())) {
+            if (expiry < today) {
+              flags.push(`Licença vencida em ${formatDate(asset.license_expiry)}`);
+            } else if (expiry <= in30Days) {
+              flags.push(`Licença vence em ${formatDate(asset.license_expiry)}`);
+            }
+          }
+        }
+
+        if (!flags.length) {
+          return null;
+        }
+
+        const priority = flags.reduce((score, flag) => {
+          let nextScore = score;
+          if (flag.includes("vencid") || flag.includes("atraso")) {
+            nextScore += 5;
+          } else if (flag.includes("vence")) {
+            nextScore += 3;
+          } else if (flag.includes("Inventário")) {
+            nextScore += 2;
+          }
+          if (flag.includes("obsoleto")) {
+            nextScore += 4;
+          }
+          return nextScore;
+        }, 0);
+
+        return { asset, flags, priority };
+      })
+      .filter((item): item is { asset: AssetRecord; flags: string[]; priority: number } => Boolean(item))
+      .sort((a, b) => {
+        if (b.priority !== a.priority) {
+          return b.priority - a.priority;
+        }
+        return a.asset.name.localeCompare(b.asset.name);
+      });
+
+    return { metrics, flagged };
+  }, [assets]);
+
   const filteredAssets = useMemo(() => {
     const term = filters.search.trim().toLowerCase();
     return assets.filter((asset) => {
@@ -962,6 +1267,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       }
 
       setTableMessage(null);
+      setInlineError(null);
       setUpdatingOwners((prev) => ({ ...prev, [assetId]: true }));
 
       const cleanup = () => {
@@ -973,144 +1279,115 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       };
 
       try {
-        const { data: sessionData, error: sessionError } =
-          await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.warn(
-            "[AssetManagement] getSession (update owner):",
-            sessionError.message
-          );
-        }
-
-        const token = sessionData?.session?.access_token || null;
-        const fallbackUser = currentUser && currentUser.id ? currentUser : null;
-        const fallbackRole = fallbackUser?.role
-          ? String(fallbackUser.role).toLowerCase()
-          : null;
-
-        if (!token && (!fallbackUser || fallbackRole !== "admin")) {
-          setTableMessage({
-            tone: "error",
-            text: "Somente administradores autenticados podem atualizar responsáveis.",
-          });
-          return;
-        }
-
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        } else if (fallbackUser) {
-          headers["X-Asset-User-Id"] = fallbackUser.id;
-          if (fallbackRole) headers["X-Asset-User-Role"] = fallbackRole;
-          if (fallbackUser.email)
-            headers["X-Asset-User-Email"] = fallbackUser.email;
-        }
-
-        const endpoint = apiUrl(
-          `/api/assets?id=${encodeURIComponent(assetId)}`
-        );
-        const response = await fetch(endpoint, {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify({
-            support_owner: ownerId || null,
-          }),
+        const result = await patchAsset(assetId, {
+          support_owner: ownerId || null,
         });
 
-        if (!response.ok) {
-          let detail: any = null;
-          try {
-            detail = await response.json();
-          } catch (_ignore) {
-            detail = null;
-          }
-          const message = detail?.error || `Status ${response.status}`;
-          console.warn("[AssetManagement] update owner:", message);
+        if (!result.ok) {
           setTableMessage({
             tone: "error",
-            text: "Não foi possível atualizar o responsável: " + message,
+            text: "Não foi possível atualizar o responsável: " + result.message,
           });
           return;
         }
 
-        let payload: { data?: unknown } | null = null;
-        try {
-          payload = await response.json();
-        } catch (_ignore) {
-          payload = null;
-        }
-
-        const updatedRaw = payload?.data ?? null;
-        if (!updatedRaw) {
-          setTableMessage({
-            tone: "error",
-            text: "Resposta inesperada ao atualizar responsável.",
-          });
-          return;
-        }
-
-        const updatedAsset = normalizeAsset(updatedRaw);
-        const ownerProfile = updatedAsset.support_owner_profile;
-        if (ownerProfile?.id) {
-          setOwnersMap((prev) => ({
-            ...prev,
-            [ownerProfile.id]: {
-              full_name:
-                typeof ownerProfile.full_name === "string" &&
-                ownerProfile.full_name.trim()
-                  ? ownerProfile.full_name.trim()
-                  : ownerProfile.email || null,
-              email: ownerProfile.email || null,
-              role: ownerProfile.role || null,
-            },
-          }));
-          setSupportUsers((prev) => {
-            if (prev.some((user) => user.id === ownerProfile.id)) {
-              return prev;
-            }
-            return [
-              ...prev,
-              {
-                id: ownerProfile.id,
-                full_name:
-                  (typeof ownerProfile.full_name === "string" &&
-                    ownerProfile.full_name.trim()) ||
-                  ownerProfile.email ||
-                  "Sem nome",
-                email: ownerProfile.email || "",
-              },
-            ];
-          });
-        }
-
-        setAssets((prev) =>
-          prev.map((asset) => (asset.id === assetId ? updatedAsset : asset))
-        );
         if (editingAssetId === assetId) {
           setFormState((prev) => ({
             ...prev,
             support_owner: ownerId || "",
           }));
         }
+
         setTableMessage({
           tone: "success",
           text: "Responsável atualizado com sucesso.",
-        });
-      } catch (cause) {
-        console.warn("[AssetManagement] update owner: unexpected", cause);
-        setTableMessage({
-          tone: "error",
-          text: "Erro inesperado ao atualizar responsável.",
         });
       } finally {
         cleanup();
       }
     },
-    [assets, currentUser, editingAssetId]
+    [assets, patchAsset, editingAssetId]
   );
+
+  const toggleInlineEditor = useCallback((asset: AssetRecord) => {
+    setInlineError(null);
+    setInlineEditingId((current) => {
+      if (current === asset.id) {
+        setInlineDraft(null);
+        return null;
+      }
+      setInlineDraft({
+        status: asset.status,
+        lifecycle_stage: asset.lifecycle_stage,
+        last_maintenance_date: toDateInputValue(asset.last_maintenance_date),
+        next_maintenance_date: toDateInputValue(asset.next_maintenance_date),
+        warranty_expires_at: toDateInputValue(asset.warranty_expires_at),
+        license_expiry: toDateInputValue(asset.license_expiry),
+        location: asset.location || "",
+        description: asset.description || "",
+        inventoried: Boolean(asset.inventoried),
+      });
+      return asset.id;
+    });
+  }, []);
+
+  const cancelInlineEditing = useCallback(() => {
+    setInlineEditingId(null);
+    setInlineDraft(null);
+    setInlineError(null);
+  }, []);
+
+  const handleInlineDraftChange = useCallback(
+    (field: keyof InlineDraftState, value: string | boolean) => {
+      setInlineDraft((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          [field]: value,
+        } as InlineDraftState;
+      });
+    },
+    []
+  );
+
+  const handleInlineSubmit = useCallback(async () => {
+    if (!inlineEditingId || !inlineDraft) {
+      return;
+    }
+
+    setInlineError(null);
+    setInlineSaving(true);
+
+    try {
+      const payload = {
+        status: inlineDraft.status,
+        lifecycle_stage: inlineDraft.lifecycle_stage,
+        last_maintenance_date: inlineDraft.last_maintenance_date || null,
+        next_maintenance_date: inlineDraft.next_maintenance_date || null,
+        warranty_expires_at: inlineDraft.warranty_expires_at || null,
+        license_expiry: inlineDraft.license_expiry || null,
+        location: inlineDraft.location.trim() || null,
+        description: inlineDraft.description.trim() || null,
+        inventoried: inlineDraft.inventoried,
+      } as Record<string, unknown>;
+
+      const result = await patchAsset(inlineEditingId, payload);
+
+      if (!result.ok) {
+        setInlineError(result.message);
+        return;
+      }
+
+      setTableMessage({
+        tone: "success",
+        text: "Ativo atualizado diretamente no card.",
+      });
+      setInlineEditingId(null);
+      setInlineDraft(null);
+    } finally {
+      setInlineSaving(false);
+    }
+  }, [inlineDraft, inlineEditingId, patchAsset]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1320,6 +1597,91 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       </SectionHeader>
 
       <MetricsGrid>
+        <Card>
+          <CardHeaderBlock>
+            <CardTitleLabel>Ativos que exigem atenção</CardTitleLabel>
+            <CardSubtitle>
+              Indicadores de licenças, manutenções e inventário que precisam de ação.
+            </CardSubtitle>
+          </CardHeaderBlock>
+          {!assets.length ? (
+            <EmptyState>Carregue o inventário para visualizar os indicadores críticos.</EmptyState>
+          ) : (
+            <>
+              <AttentionGrid>
+                <AttentionTile>
+                  <AttentionLabel>Inventário pendente</AttentionLabel>
+                  <AttentionValue alert={attentionSummary.metrics.pendingInventory > 0}>
+                    {attentionSummary.metrics.pendingInventory}
+                  </AttentionValue>
+                </AttentionTile>
+                <AttentionTile>
+                  <AttentionLabel>Licenças a vencer (30 dias)</AttentionLabel>
+                  <AttentionValue alert={attentionSummary.metrics.expiringLicense > 0}>
+                    {attentionSummary.metrics.expiringLicense}
+                  </AttentionValue>
+                </AttentionTile>
+                <AttentionTile>
+                  <AttentionLabel>Manutenções em atraso</AttentionLabel>
+                  <AttentionValue alert={attentionSummary.metrics.maintenanceDue > 0}>
+                    {attentionSummary.metrics.maintenanceDue}
+                  </AttentionValue>
+                </AttentionTile>
+                <AttentionTile>
+                  <AttentionLabel>Ativos obsoletos</AttentionLabel>
+                  <AttentionValue alert={attentionSummary.metrics.obsolete > 0}>
+                    {attentionSummary.metrics.obsolete}
+                  </AttentionValue>
+                </AttentionTile>
+              </AttentionGrid>
+
+              {attentionSummary.flagged.length ? (
+                <AttentionList>
+                  {attentionSummary.flagged.slice(0, 6).map(({ asset, flags }, index) => {
+                    const statusMeta =
+                      STATUS_BADGE[asset.status] ?? {
+                        label: asset.status,
+                        tone: "neutral" as const,
+                      };
+                    return (
+                      <AttentionItem key={`${asset.id}-${index}`}>
+                        <AttentionItemHeader>
+                          <span style={{ fontWeight: 600 }}>
+                            {asset.asset_code} • {asset.name}
+                          </span>
+                          <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+                        </AttentionItemHeader>
+                        <AttentionAssetMeta>
+                          {CATEGORY_LABEL[asset.category]} • {asset.location || "Local não informado"}
+                        </AttentionAssetMeta>
+                        <AttentionAssetMeta>
+                          Próxima manutenção: {formatDate(asset.next_maintenance_date)} • Licença: {formatDate(asset.license_expiry)}
+                        </AttentionAssetMeta>
+                        <AttentionFlags>
+                          {flags.map((flag, flagIndex) => (
+                            <Badge
+                              key={`${asset.id}-flag-${flagIndex}`}
+                              tone={
+                                flag.includes("vencid") || flag.includes("atraso")
+                                  ? "danger"
+                                  : "warning"
+                              }
+                            >
+                              {flag}
+                            </Badge>
+                          ))}
+                        </AttentionFlags>
+                      </AttentionItem>
+                    );
+                  })}
+                </AttentionList>
+              ) : (
+                <EmptyState>Todos os ativos estão em dia no momento.</EmptyState>
+              )}
+            </>
+          )}
+        </Card>
+
         <Card>
           <CardHeaderBlock>
             <CardTitleLabel>Ativos inventariados</CardTitleLabel>
@@ -1795,81 +2157,279 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                           : "—";
                         const editingThisAsset = editingAssetId === asset.id;
 
+                        const inlineActive = inlineEditingId === asset.id;
+
                         return (
-                          <TableRow key={asset.id}>
-                            <TableCell>{asset.asset_code}</TableCell>
-                            <TableCell>
-                              <AssetName>{asset.name}</AssetName>
-                              <AssetMeta>
-                                Adquirido em {formatDate(asset.acquisition_date)}
-                              </AssetMeta>
-                              <AssetMeta>
-                                Qtd. {asset.quantity} • {asset.location?.length
-                                  ? asset.location
-                                  : "Local não informado"}
-                              </AssetMeta>
-                            </TableCell>
-                            <TableCell>
-                              <Select
-                                value={currentOwnerId}
-                                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                                  handleOwnerChange(asset.id, event.target.value)
-                                }
-                                disabled={Boolean(updatingOwners[asset.id])}
-                                style={{ minWidth: 200 }}
-                              >
-                                <option value="">Sem responsável</option>
-                                {ownerSelectOptions.map((user) => (
-                                  <option key={user.id} value={user.id}>
-                                    {user.full_name}
-                                  </option>
-                                ))}
-                              </Select>
-                              {updatingOwners[asset.id] ? (
-                                <OwnerHint>Atualizando...</OwnerHint>
-                              ) : currentOwnerId ? (
-                                ownerMeta?.email ? (
-                                  <OwnerHint>{ownerMeta.email}</OwnerHint>
-                                ) : null
-                              ) : (
-                                <OwnerHint>
-                                  Defina um responsável para aparecer no painel de suporte.
-                                </OwnerHint>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge tone="info">
-                                {LIFECYCLE_LABEL[asset.lifecycle_stage]}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {formatDate(asset.last_maintenance_date)}
-                            </TableCell>
-                            <TableCell>{nextAction}</TableCell>
-                            <TableCell>
-                              <Badge tone={statusMeta.tone}>
-                                {statusMeta.label}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <Badge tone={asset.inventoried ? "success" : "warning"}>
-                                {asset.inventoried ? "Inventariado" : "Pendente"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <TableActions>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="soft"
-                                  onClick={() => handleEditAsset(asset)}
-                                  disabled={saving || editingThisAsset}
+                          <React.Fragment key={asset.id}>
+                            <TableRow>
+                              <TableCell>{asset.asset_code}</TableCell>
+                              <TableCell>
+                                <AssetName>{asset.name}</AssetName>
+                                <AssetMeta>
+                                  Adquirido em {formatDate(asset.acquisition_date)}
+                                </AssetMeta>
+                                <AssetMeta>
+                                  Qtd. {asset.quantity} • {asset.location?.length
+                                    ? asset.location
+                                    : "Local não informado"}
+                                </AssetMeta>
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  value={currentOwnerId}
+                                  onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                                    handleOwnerChange(asset.id, event.target.value)
+                                  }
+                                  disabled={Boolean(updatingOwners[asset.id])}
+                                  style={{ minWidth: 200 }}
                                 >
-                                  {editingThisAsset ? "Em edição" : "Editar"}
-                                </Button>
-                              </TableActions>
-                            </TableCell>
-                          </TableRow>
+                                  <option value="">Sem responsável</option>
+                                  {ownerSelectOptions.map((user) => (
+                                    <option key={user.id} value={user.id}>
+                                      {user.full_name}
+                                    </option>
+                                  ))}
+                                </Select>
+                                {updatingOwners[asset.id] ? (
+                                  <OwnerHint>Atualizando...</OwnerHint>
+                                ) : currentOwnerId ? (
+                                  ownerMeta?.email ? (
+                                    <OwnerHint>{ownerMeta.email}</OwnerHint>
+                                  ) : null
+                                ) : (
+                                  <OwnerHint>
+                                    Defina um responsável para aparecer no painel de suporte.
+                                  </OwnerHint>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge tone="info">
+                                  {LIFECYCLE_LABEL[asset.lifecycle_stage]}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                {formatDate(asset.last_maintenance_date)}
+                              </TableCell>
+                              <TableCell>{nextAction}</TableCell>
+                              <TableCell>
+                                <Badge tone={statusMeta.tone}>
+                                  {statusMeta.label}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge tone={asset.inventoried ? "success" : "warning"}>
+                                  {asset.inventoried ? "Inventariado" : "Pendente"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <TableActions>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="soft"
+                                    onClick={() => toggleInlineEditor(asset)}
+                                    disabled={inlineSaving && inlineActive}
+                                  >
+                                    {inlineActive ? "Cancelar edição rápida" : "Editar no card"}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleEditAsset(asset)}
+                                    disabled={saving || editingThisAsset}
+                                  >
+                                    {editingThisAsset ? "Em edição" : "Formulário completo"}
+                                  </Button>
+                                </TableActions>
+                              </TableCell>
+                            </TableRow>
+                            {inlineActive && inlineDraft && (
+                              <TableRow>
+                                <TableCell colSpan={9}>
+                                  <InlineEditor>
+                                    {inlineError && <InlineError>{inlineError}</InlineError>}
+                                    <InlineGrid>
+                                      <Field>
+                                        <FieldLabel htmlFor={`inline-status-${asset.id}`}>
+                                          Status
+                                        </FieldLabel>
+                                        <Select
+                                          id={`inline-status-${asset.id}`}
+                                          value={inlineDraft.status}
+                                          onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                                            handleInlineDraftChange(
+                                              "status",
+                                              event.target.value as AssetStatus
+                                            )
+                                          }
+                                          disabled={inlineSaving}
+                                        >
+                                          {STATUS_OPTIONS.map((status) => (
+                                            <option key={status} value={status}>
+                                              {STATUS_BADGE[status]?.label ?? status}
+                                            </option>
+                                          ))}
+                                        </Select>
+                                      </Field>
+                                      <Field>
+                                        <FieldLabel htmlFor={`inline-lifecycle-${asset.id}`}>
+                                          Etapa do ciclo de vida
+                                        </FieldLabel>
+                                        <Select
+                                          id={`inline-lifecycle-${asset.id}`}
+                                          value={inlineDraft.lifecycle_stage}
+                                          onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                                            handleInlineDraftChange(
+                                              "lifecycle_stage",
+                                              event.target.value as LifecycleStage
+                                            )
+                                          }
+                                          disabled={inlineSaving}
+                                        >
+                                          {(Object.keys(LIFECYCLE_LABEL) as LifecycleStage[]).map((stage) => (
+                                            <option key={stage} value={stage}>
+                                              {LIFECYCLE_LABEL[stage]}
+                                            </option>
+                                          ))}
+                                        </Select>
+                                      </Field>
+                                      <Field>
+                                        <FieldLabel htmlFor={`inline-last-${asset.id}`}>
+                                          Última manutenção
+                                        </FieldLabel>
+                                        <Input
+                                          id={`inline-last-${asset.id}`}
+                                          type="date"
+                                          value={inlineDraft.last_maintenance_date}
+                                          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                            handleInlineDraftChange(
+                                              "last_maintenance_date",
+                                              event.target.value
+                                            )
+                                          }
+                                          disabled={inlineSaving}
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <FieldLabel htmlFor={`inline-next-${asset.id}`}>
+                                          Próxima manutenção
+                                        </FieldLabel>
+                                        <Input
+                                          id={`inline-next-${asset.id}`}
+                                          type="date"
+                                          value={inlineDraft.next_maintenance_date}
+                                          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                            handleInlineDraftChange(
+                                              "next_maintenance_date",
+                                              event.target.value
+                                            )
+                                          }
+                                          disabled={inlineSaving}
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <FieldLabel htmlFor={`inline-license-${asset.id}`}>
+                                          Licença expira em
+                                        </FieldLabel>
+                                        <Input
+                                          id={`inline-license-${asset.id}`}
+                                          type="date"
+                                          value={inlineDraft.license_expiry}
+                                          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                            handleInlineDraftChange(
+                                              "license_expiry",
+                                              event.target.value
+                                            )
+                                          }
+                                          disabled={inlineSaving}
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <FieldLabel htmlFor={`inline-warranty-${asset.id}`}>
+                                          Garantia expira em
+                                        </FieldLabel>
+                                        <Input
+                                          id={`inline-warranty-${asset.id}`}
+                                          type="date"
+                                          value={inlineDraft.warranty_expires_at}
+                                          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                            handleInlineDraftChange(
+                                              "warranty_expires_at",
+                                              event.target.value
+                                            )
+                                          }
+                                          disabled={inlineSaving}
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <FieldLabel htmlFor={`inline-location-${asset.id}`}>
+                                          Localização
+                                        </FieldLabel>
+                                        <Input
+                                          id={`inline-location-${asset.id}`}
+                                          value={inlineDraft.location}
+                                          onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                            handleInlineDraftChange("location", event.target.value)
+                                          }
+                                          disabled={inlineSaving}
+                                        />
+                                      </Field>
+                                      <Field>
+                                        <CheckboxRow>
+                                          <CheckboxInput
+                                            type="checkbox"
+                                            checked={inlineDraft.inventoried}
+                                            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                                              handleInlineDraftChange("inventoried", event.target.checked)
+                                            }
+                                            disabled={inlineSaving}
+                                          />
+                                          <span>Inventariado</span>
+                                        </CheckboxRow>
+                                      </Field>
+                                      <Field style={{ gridColumn: "1 / -1" }}>
+                                        <FieldLabel htmlFor={`inline-description-${asset.id}`}>
+                                          Descrição
+                                        </FieldLabel>
+                                        <TextArea
+                                          id={`inline-description-${asset.id}`}
+                                          value={inlineDraft.description}
+                                          onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
+                                            handleInlineDraftChange(
+                                              "description",
+                                              event.target.value
+                                            )
+                                          }
+                                          disabled={inlineSaving}
+                                          style={{ minHeight: 90 }}
+                                        />
+                                      </Field>
+                                    </InlineGrid>
+                                    <InlineActions>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={cancelInlineEditing}
+                                        disabled={inlineSaving}
+                                      >
+                                        Cancelar
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={handleInlineSubmit}
+                                        disabled={inlineSaving}
+                                      >
+                                        {inlineSaving ? "Salvando..." : "Salvar alterações"}
+                                      </Button>
+                                    </InlineActions>
+                                  </InlineEditor>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>

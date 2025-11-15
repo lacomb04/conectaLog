@@ -5,7 +5,9 @@ import supabase from "../../supabaseClient";
 import Card from "../components/ui/Card";
 import Button from "../components/ui/Button";
 import Select from "../components/ui/Select";
+import { Input } from "../components/ui/Input";
 import Badge from "../components/ui/Badge";
+import { buildAssetIndicators, normalizeAssetFilter } from "../utils/asset-utils";
 import {
   DndContext,
   closestCenter,
@@ -219,6 +221,111 @@ const StyledTable = styled.table`
   tbody tr:hover {
     background: rgba(15, 23, 42, 0.04);
   }
+`;
+
+const AssetMetricsGrid = styled.div`
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+`;
+
+const AssetMetric = styled.div`
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-1, #f8fafc);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+`;
+
+const AssetMetricLabel = styled.span`
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+`;
+
+const AssetMetricValue = styled.span`
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: ${({ $alert }) => ($alert ? "#dc2626" : "var(--text)")};
+`;
+
+const AssetFiltersRow = styled.div`
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+`;
+
+const AssetList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+`;
+
+const AssetCardRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: var(--space-4);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+`;
+
+const AssetInfoBlock = styled.div`
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+`;
+
+const AssetBadgeRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+`;
+
+const AssetFlagsRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+`;
+
+const AssetMetaText = styled.span`
+  font-size: 0.82rem;
+  color: var(--muted);
+`;
+
+const AssetActionBlock = styled.div`
+  flex: 1 1 200px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  color: var(--muted);
+`;
+
+const AssetError = styled.p`
+  margin-top: var(--space-3);
+  color: #b91c1c;
+  font-size: 0.85rem;
+`;
+
+const AssetEmpty = styled.p`
+  margin-top: var(--space-3);
+  color: var(--muted);
+  font-size: 0.9rem;
 `;
 
 function SortableTicket({
@@ -470,6 +577,9 @@ export default function SupportDashboard({
   const [assignedAssets, setAssignedAssets] = useState([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [assetsError, setAssetsError] = useState("");
+  const [assetSearch, setAssetSearch] = useState("");
+  const [assetCategoryFilter, setAssetCategoryFilter] = useState("all");
+  const [assetStatusFilter, setAssetStatusFilter] = useState("all");
   const assetsMountedRef = useRef(true);
 
   const chatButtons = [
@@ -598,6 +708,113 @@ export default function SupportDashboard({
     if (Number.isNaN(parsed.getTime())) return "—";
     return parsed.toLocaleDateString("pt-BR");
   }, []);
+
+  const computeAssetFlags = useCallback(
+    (asset) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const in30Days = new Date(today);
+      in30Days.setDate(today.getDate() + 30);
+
+      const flags = [];
+      if (!asset.inventoried) {
+        flags.push("Inventário pendente");
+      }
+
+      if (asset.status === "obsoleto") {
+        flags.push("Ativo obsoleto");
+      }
+
+      if (asset.next_maintenance_date) {
+        const next = new Date(asset.next_maintenance_date);
+        if (!Number.isNaN(next.getTime()) && next <= today) {
+          flags.push("Manutenção em atraso");
+        }
+      }
+
+      if (asset.license_expiry) {
+        const expiry = new Date(asset.license_expiry);
+        if (!Number.isNaN(expiry.getTime())) {
+          if (expiry < today) {
+            flags.push(`Licença vencida em ${formatAssetDate(asset.license_expiry)}`);
+          } else if (expiry <= in30Days) {
+            flags.push(`Licença vence em ${formatAssetDate(asset.license_expiry)}`);
+          }
+        }
+      }
+
+      return flags;
+    },
+    [formatAssetDate]
+  );
+
+  const nextAssetAction = useCallback(
+    (asset) => {
+      if (asset.license_expiry) {
+        return `Renovar licença até ${formatAssetDate(asset.license_expiry)}`;
+      }
+      if (asset.next_maintenance_date) {
+        return `Planejar manutenção em ${formatAssetDate(asset.next_maintenance_date)}`;
+      }
+      if (asset.last_maintenance_date) {
+        return `Última manutenção em ${formatAssetDate(asset.last_maintenance_date)}`;
+      }
+      return "Nenhuma ação futura registrada";
+    },
+    [formatAssetDate]
+  );
+
+  const processedAssets = useMemo(() => {
+    if (!assignedAssets?.length) {
+      return [];
+    }
+
+    const normalized = normalizeAssetFilter(assignedAssets, {
+      term: assetSearch,
+      category: assetCategoryFilter,
+      status: assetStatusFilter,
+    });
+
+    return normalized
+      .map((asset) => {
+        const flags = computeAssetFlags(asset);
+        const priority = flags.reduce((score, flag) => {
+          if (flag.includes("atraso")) return score + 4;
+          if (flag.includes("vence")) return score + 3;
+          if (flag.includes("Inventário")) return score + 2;
+          if (flag.includes("obsoleto")) return score + 3;
+          return score + 1;
+        }, 0);
+        return { asset, flags, priority };
+      })
+      .sort((a, b) => {
+        if (b.priority !== a.priority) {
+          return b.priority - a.priority;
+        }
+        const aCategory = ASSET_CATEGORY_LABELS[a.asset.category] || a.asset.category;
+        const bCategory = ASSET_CATEGORY_LABELS[b.asset.category] || b.asset.category;
+        const categoryCompare = aCategory.localeCompare(bCategory);
+        if (categoryCompare !== 0) {
+          return categoryCompare;
+        }
+        return a.asset.name.localeCompare(b.asset.name);
+      });
+  }, [assignedAssets, assetSearch, assetCategoryFilter, assetStatusFilter, computeAssetFlags]);
+
+  const filteredAssets = useMemo(
+    () => processedAssets.map((entry) => entry.asset),
+    [processedAssets]
+  );
+
+  const assetIndicators = useMemo(
+    () => buildAssetIndicators(filteredAssets),
+    [filteredAssets]
+  );
+
+  const assetsNeedingCare = useMemo(
+    () => processedAssets.filter((entry) => entry.flags.length > 0),
+    [processedAssets]
+  );
 
   useEffect(() => {
     if (!user?.id) return;
@@ -912,6 +1129,237 @@ export default function SupportDashboard({
           </Select>
         </div>
       </div>
+
+      <Card style={{ marginTop: "var(--space-5)" }}>
+        <div
+          className="stack-between"
+          style={{ alignItems: "flex-start", gap: "var(--space-3)" }}
+        >
+          <div>
+            <h2 style={{ margin: 0 }}>Ativos de TI sob sua responsabilidade</h2>
+            <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
+              Visualize manutenções, licenças e pendências de inventário dos ativos atribuídos.
+            </p>
+          </div>
+        </div>
+
+        {assetsError && <AssetError>{assetsError}</AssetError>}
+
+        {assetsLoading ? (
+          <AssetEmpty>Carregando ativos atribuídos...</AssetEmpty>
+        ) : !assignedAssets.length ? (
+          <AssetEmpty>Você ainda não possui ativos atribuídos.</AssetEmpty>
+        ) : (
+          <>
+            <AssetMetricsGrid>
+              <AssetMetric>
+                <AssetMetricLabel>Total atribuídos</AssetMetricLabel>
+                <AssetMetricValue>{assetIndicators.total}</AssetMetricValue>
+              </AssetMetric>
+              <AssetMetric>
+                <AssetMetricLabel>Inventariados</AssetMetricLabel>
+                <AssetMetricValue>{assetIndicators.inventoried}</AssetMetricValue>
+              </AssetMetric>
+              <AssetMetric>
+                <AssetMetricLabel>Inventário pendente</AssetMetricLabel>
+                <AssetMetricValue $alert={assetIndicators.pendingInventory > 0}>
+                  {assetIndicators.pendingInventory}
+                </AssetMetricValue>
+              </AssetMetric>
+              <AssetMetric>
+                <AssetMetricLabel>Licenças a vencer (30 dias)</AssetMetricLabel>
+                <AssetMetricValue $alert={assetIndicators.expiringLicense > 0}>
+                  {assetIndicators.expiringLicense}
+                </AssetMetricValue>
+              </AssetMetric>
+              <AssetMetric>
+                <AssetMetricLabel>Manutenções em atraso</AssetMetricLabel>
+                <AssetMetricValue $alert={assetIndicators.maintenanceDue > 0}>
+                  {assetIndicators.maintenanceDue}
+                </AssetMetricValue>
+              </AssetMetric>
+              <AssetMetric>
+                <AssetMetricLabel>Obsoletos</AssetMetricLabel>
+                <AssetMetricValue $alert={assetIndicators.obsolete > 0}>
+                  {assetIndicators.obsolete}
+                </AssetMetricValue>
+              </AssetMetric>
+            </AssetMetricsGrid>
+
+            <AssetFiltersRow>
+              <div>
+                <label
+                  htmlFor="support-asset-search"
+                  style={{
+                    display: "block",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    marginBottom: 6,
+                  }}
+                >
+                  Buscar
+                </label>
+                <Input
+                  id="support-asset-search"
+                  placeholder="Código, ativo ou palavra-chave"
+                  value={assetSearch}
+                  onChange={(event) => setAssetSearch(event.target.value)}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="support-asset-category"
+                  style={{
+                    display: "block",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    marginBottom: 6,
+                  }}
+                >
+                  Categoria
+                </label>
+                <Select
+                  id="support-asset-category"
+                  value={assetCategoryFilter}
+                  onChange={(event) => setAssetCategoryFilter(event.target.value)}
+                >
+                  <option value="all">Todas</option>
+                  {Object.entries(ASSET_CATEGORY_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label
+                  htmlFor="support-asset-status"
+                  style={{
+                    display: "block",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    marginBottom: 6,
+                  }}
+                >
+                  Status
+                </label>
+                <Select
+                  id="support-asset-status"
+                  value={assetStatusFilter}
+                  onChange={(event) => setAssetStatusFilter(event.target.value)}
+                >
+                  <option value="all">Todos</option>
+                  {Object.entries(ASSET_STATUS_META).map(([value, meta]) => (
+                    <option key={value} value={value}>
+                      {meta.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </AssetFiltersRow>
+
+            {processedAssets.length > 0 && (
+              <div style={{ marginTop: "var(--space-3)" }}>
+                {assetsNeedingCare.length > 0 ? (
+                  <Badge tone="warning">
+                    {assetsNeedingCare.length === 1
+                      ? "1 ativo precisa da sua atenção"
+                      : `${assetsNeedingCare.length} ativos precisam da sua atenção`}
+                  </Badge>
+                ) : (
+                  <Badge tone="success">Nenhum alerta crítico entre os filtros atuais</Badge>
+                )}
+              </div>
+            )}
+
+            {processedAssets.length === 0 ? (
+              <AssetEmpty>
+                Nenhum ativo corresponde aos filtros selecionados.
+              </AssetEmpty>
+            ) : (
+              <AssetList>
+                {processedAssets.map(({ asset, flags }) => {
+                  const statusMeta =
+                    ASSET_STATUS_META[asset.status] || {
+                      tone: "neutral",
+                      label: asset.status,
+                    };
+                  const flagged = flags.length > 0;
+                  return (
+                    <AssetCardRow
+                      key={asset.id}
+                      style={
+                        flagged
+                          ? {
+                              borderColor: "#f97316",
+                              boxShadow: "0 0 0 3px rgba(248, 113, 113, 0.12)",
+                            }
+                          : undefined
+                      }
+                    >
+                      <AssetInfoBlock>
+                        <span style={{ fontWeight: 700, fontSize: "1rem" }}>
+                          {asset.asset_code} • {asset.name}
+                        </span>
+                        <AssetMetaText>
+                          {(ASSET_CATEGORY_LABELS[asset.category] || asset.category) +
+                            (asset.location ? ` • ${asset.location}` : "")}
+                        </AssetMetaText>
+                        <AssetMetaText>
+                          Ciclo de vida: {ASSET_LIFECYCLE_LABELS[asset.lifecycle_stage] || asset.lifecycle_stage}
+                        </AssetMetaText>
+                      </AssetInfoBlock>
+
+                      <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
+                        <AssetBadgeRow>
+                          <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+                          <Badge tone={asset.inventoried ? "success" : "warning"}>
+                            {asset.inventoried ? "Inventariado" : "Inventário pendente"}
+                          </Badge>
+                        </AssetBadgeRow>
+                        {flags.length > 0 && (
+                          <AssetFlagsRow>
+                            {flags.map((flag, index) => (
+                              <Badge
+                                key={`${asset.id}-${index}`}
+                                tone={
+                                  flag.includes("atraso") || flag.includes("vencid")
+                                    ? "danger"
+                                    : "warning"
+                                }
+                              >
+                                {flag}
+                              </Badge>
+                            ))}
+                          </AssetFlagsRow>
+                        )}
+                      </div>
+
+                      <AssetActionBlock>
+                        <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>
+                          Próxima ação
+                        </span>
+                        <span>{nextAssetAction(asset)}</span>
+                        <AssetMetaText>
+                          Última manutenção: {formatAssetDate(asset.last_maintenance_date)}
+                        </AssetMetaText>
+                        <AssetMetaText>
+                          Próxima manutenção: {formatAssetDate(asset.next_maintenance_date)}
+                        </AssetMetaText>
+                        {asset.warranty_expires_at && (
+                          <AssetMetaText>
+                            Garantia: {formatAssetDate(asset.warranty_expires_at)}
+                          </AssetMetaText>
+                        )}
+                      </AssetActionBlock>
+                    </AssetCardRow>
+                  );
+                })}
+              </AssetList>
+            )}
+          </>
+        )}
+      </Card>
 
       {loading ? (
         <p>Carregando...</p>
