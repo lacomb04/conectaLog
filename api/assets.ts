@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { IncomingHttpHeaders } from "http";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL =
@@ -35,8 +35,21 @@ type RequesterProfile = {
   email?: string | null;
 };
 
+type HandlerRequest = {
+  method?: string;
+  headers: IncomingHttpHeaders;
+  query: Record<string, string | string[] | undefined>;
+  body?: any;
+};
+
+type HandlerResponse = {
+  status: (code: number) => HandlerResponse;
+  json: (body: unknown) => void;
+  setHeader: (name: string, value: string) => void;
+};
+
 async function resolveProfile(
-  req: VercelRequest
+  req: HandlerRequest
 ): Promise<{ profile: RequesterProfile | null; status?: number; error?: string }> {
   if (!supabaseAdmin) {
     return {
@@ -46,10 +59,11 @@ async function resolveProfile(
     };
   }
 
-  const authHeader = (req.headers.authorization || "").toLowerCase();
+  const rawAuth = req.headers.authorization || req.headers.Authorization;
+  const authHeader = typeof rawAuth === "string" ? rawAuth.toLowerCase() : "";
 
   if (authHeader.startsWith("bearer ")) {
-    const token = (req.headers.authorization || "").slice(7).trim();
+    const token = (typeof rawAuth === "string" ? rawAuth : "").slice(7).trim();
     if (!token) {
       return { profile: null, status: 401, error: "Token de acesso inválido." };
     }
@@ -93,7 +107,11 @@ async function resolveProfile(
     }
   }
 
-  const headerUserId = String(req.headers["x-asset-user-id"] || "").trim();
+  const headerUserId = String(
+    req.headers["x-asset-user-id"] ||
+      req.headers["X-Asset-User-Id"] ||
+      ""
+  ).trim();
   if (!headerUserId) {
     return { profile: null, status: 401, error: "Token de acesso ausente." };
   }
@@ -117,7 +135,11 @@ async function resolveProfile(
       };
     }
 
-    const claimedRole = String(req.headers["x-asset-user-role"] || "").trim();
+    const claimedRole = String(
+      req.headers["x-asset-user-role"] ||
+        req.headers["X-Asset-User-Role"] ||
+        ""
+    ).trim();
     if (
       claimedRole &&
       claimedRole.toLowerCase() !== (fetchedProfile.role || "").toLowerCase()
@@ -132,7 +154,7 @@ async function resolveProfile(
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: HandlerRequest, res: HandlerResponse) {
   if (!supabaseAdmin) {
     res
       .status(503)
@@ -148,7 +170,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     try {
-      const scope = String((req.query.scope as string) || "").toLowerCase();
+      const scopeParam = req.query.scope;
+      const scope = Array.isArray(scopeParam)
+        ? String(scopeParam[0] || "").toLowerCase()
+        : String(scopeParam || "").toLowerCase();
 
       let query = supabaseAdmin
         .from("assets")
