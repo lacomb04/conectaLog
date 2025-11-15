@@ -19,7 +19,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts"
-import { TrendingUp, Clock, CheckCircle2, Users, Activity, Target } from "lucide-react"
+import { TrendingUp, Clock, CheckCircle2, Users, Activity, Target, Star } from "lucide-react"
 
 interface AnalyticsDashboardProps {
   tickets: Ticket[]
@@ -135,6 +135,7 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
               resolved: 0,
               avgTime: 0,
               times: [],
+              ratings: [],
             }
           }
           acc[agentId].total++
@@ -144,6 +145,9 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
               const time =
                 (new Date(ticket.resolved_at).getTime() - new Date(ticket.created_at).getTime()) / (1000 * 60)
               acc[agentId].times.push(time)
+            }
+            if (typeof ticket.resolution_rating === "number") {
+              acc[agentId].ratings.push(ticket.resolution_rating)
             }
           }
           return acc
@@ -156,6 +160,18 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
       total: agent.total,
       resolved: agent.resolved,
       avgTime: agent.times.length > 0 ? agent.times.reduce((a: number, b: number) => a + b, 0) / agent.times.length : 0,
+      avgRating: agent.ratings.length > 0 ? agent.ratings.reduce((a: number, b: number) => a + b, 0) / agent.ratings.length : null,
+    }))
+
+    const ratedTickets = tickets.filter((t) => typeof t.resolution_rating === "number")
+    const avgRating =
+      ratedTickets.length > 0
+        ? ratedTickets.reduce((acc, t) => acc + (t.resolution_rating || 0), 0) / ratedTickets.length
+        : 0
+
+    const ratingDistribution = [1, 2, 3, 4, 5].map((rating) => ({
+      rating,
+      count: ratedTickets.filter((t) => t.resolution_rating === rating).length,
     }))
 
     return {
@@ -172,6 +188,9 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
       openTickets: tickets.filter((t) => t.status === "open").length,
       resolvedTickets: resolvedTickets.length,
       criticalTickets: tickets.filter((t) => t.priority === "critical").length,
+      ratedTickets: ratedTickets.length,
+      avgRating,
+      ratingDistribution,
     }
   }, [tickets])
 
@@ -189,7 +208,7 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total de Tickets</CardTitle>
@@ -198,6 +217,21 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
           <CardContent>
             <div className="text-2xl font-bold">{analytics.totalTickets}</div>
             <p className="text-xs text-muted-foreground mt-1">Todos os chamados</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Nota Média</CardTitle>
+            <Star className="h-4 w-4 text-yellow-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{analytics.ratedTickets > 0 ? analytics.avgRating.toFixed(1) : "-"}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {analytics.ratedTickets > 0
+                ? `${analytics.ratedTickets} avaliações registradas`
+                : "Nenhuma avaliação registrada"}
+            </p>
           </CardContent>
         </Card>
 
@@ -336,6 +370,25 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
                 </ResponsiveContainer>
               </CardContent>
             </Card>
+
+            {/* Rating Distribution */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Distribuição de Avaliações</CardTitle>
+                <CardDescription>Avaliações dos colaboradores sobre as soluções</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={analytics.ratingDistribution}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="rating" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill={COLORS.yellow} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -423,7 +476,7 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
                           {agent.resolved}/{agent.total} resolvidos
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <p className="text-muted-foreground">Total</p>
                           <p className="text-lg font-semibold">{agent.total}</p>
@@ -437,6 +490,12 @@ export function AnalyticsDashboard({ tickets, stats }: AnalyticsDashboardProps) 
                         <div>
                           <p className="text-muted-foreground">Tempo Médio</p>
                           <p className="text-lg font-semibold">{formatTime(agent.avgTime)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Nota Média</p>
+                          <p className="text-lg font-semibold">
+                            {agent.avgRating ? agent.avgRating.toFixed(1) : "-"}
+                          </p>
                         </div>
                       </div>
                     </div>
