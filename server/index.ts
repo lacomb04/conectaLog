@@ -254,6 +254,75 @@ app.post("/api/assets", requireSupabaseRequester, async (req, res) => {
   }
 });
 
+app.patch("/api/assets", requireSupabaseRequester, async (req, res) => {
+  const profile = (req as any).supabaseProfile as RequesterProfile;
+
+  if (!supabaseAdmin) {
+    res
+      .status(503)
+      .json({ error: "Serviço de gerenciamento de ativos indisponível." });
+    return;
+  }
+
+  if (profile.role !== "admin") {
+    res
+      .status(403)
+      .json({ error: "Somente administradores podem atualizar ativos." });
+    return;
+  }
+
+  const assetIdRaw = req.query.id;
+  const assetId = Array.isArray(assetIdRaw) ? assetIdRaw[0] : assetIdRaw;
+  if (!assetId) {
+    res.status(400).json({ error: "Identificador do ativo ausente." });
+    return;
+  }
+
+  const payload = req.body ?? {};
+  const updates: Record<string, any> = {};
+
+  if (Object.prototype.hasOwnProperty.call(payload, "support_owner")) {
+    updates.support_owner = payload.support_owner || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, "inventoried")) {
+    updates.inventoried = Boolean(payload.inventoried);
+  }
+
+  if (!Object.keys(updates).length) {
+    res
+      .status(400)
+      .json({ error: "Nenhum campo válido informado para atualização." });
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("assets")
+      .update(updates)
+      .eq("id", assetId)
+      .select(
+        "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)"
+      )
+      .maybeSingle();
+
+    if (error) {
+      console.error("[proxy] Falha ao atualizar ativo:", error.message);
+      res.status(400).json({ error: error.message });
+      return;
+    }
+
+    if (!data) {
+      res.status(404).json({ error: "Ativo não encontrado." });
+      return;
+    }
+
+    res.json({ data });
+  } catch (cause: any) {
+    console.error("[proxy] Erro inesperado em PATCH /api/assets/:id:", cause?.message);
+    res.status(500).json({ error: "Erro inesperado ao atualizar ativo." });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`[proxy] Servidor ConectaBot rodando na porta ${PORT}`);
 });

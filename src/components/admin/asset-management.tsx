@@ -47,6 +47,13 @@ type LifecycleStage =
 
 type AssetStatus = "em uso" | "em manutenção" | "planejado" | "obsoleto";
 
+const STATUS_OPTIONS: AssetStatus[] = [
+  "em uso",
+  "em manutenção",
+  "planejado",
+  "obsoleto",
+];
+
 type SupportUser = {
   id: string;
   full_name: string;
@@ -90,6 +97,27 @@ type AssetRecord = {
     email?: string | null;
     role?: string | null;
   } | null;
+};
+
+type FiltersState = {
+  search: string;
+  category: "all" | AssetCategory;
+  owner: "all" | "__none" | string;
+  status: "all" | AssetStatus;
+};
+
+const normalizeAsset = (item: any): AssetRecord => {
+  const quantity =
+    typeof item?.quantity === "number" && item.quantity > 0
+      ? item.quantity
+      : 1;
+  const ownerProfile = item?.support_owner_profile || null;
+  return {
+    ...item,
+    quantity,
+    inventoried: Boolean(item?.inventoried),
+    support_owner_profile: ownerProfile,
+  } as AssetRecord;
 };
 
 type AssetFormState = {
@@ -291,6 +319,25 @@ const Field = styled.div`
   gap: 6px;
 `;
 
+const FilterToolbar = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+`;
+
+const FilterField = styled(Field)`
+  min-width: 180px;
+  flex: 1 1 200px;
+`;
+
+const FilterActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+`;
+
 const FullWidthField = styled(Field)`
   grid-column: 1 / -1;
 `;
@@ -334,6 +381,12 @@ const FormFeedback = styled.p<{ tone: "success" | "error" }>`
   color: ${({ tone }) => (tone === "success" ? "#166534" : "#b91c1c")};
 `;
 
+const TableFeedback = styled.p<{ tone: "success" | "error" }>`
+  font-size: 0.82rem;
+  color: ${({ tone }) => (tone === "success" ? "#166534" : "#b91c1c")};
+  margin: 0 0 12px;
+`;
+
 const CategoryStack = styled.div`
   display: flex;
   flex-direction: column;
@@ -375,6 +428,13 @@ const TableCell = styled.td`
   border-bottom: 1px solid #edf1f7;
 `;
 
+const OwnerHint = styled.span`
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: #64748b;
+`;
+
 const AssetName = styled.p`
   font-weight: 600;
   color: #1f2933;
@@ -411,6 +471,12 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
   const [errorMessage, setErrorMessage] = useState("");
   const [supportUsers, setSupportUsers] = useState<SupportUser[]>([]);
   const [ownersMap, setOwnersMap] = useState<Record<string, OwnerInfo>>({});
+  const [filters, setFilters] = useState<FiltersState>({
+    search: "",
+    category: "all",
+    owner: "all",
+    status: "all",
+  });
   const [formState, setFormState] = useState<AssetFormState>({
     ...DEFAULT_FORM_STATE,
   });
@@ -418,6 +484,10 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
   const [formStatus, setFormStatus] =
     useState<"idle" | "success" | "error">("idle");
   const [formMessage, setFormMessage] = useState("");
+  const [updatingOwners, setUpdatingOwners] = useState<Record<string, boolean>>({});
+  const [tableMessage, setTableMessage] = useState<
+    { tone: "success" | "error"; text: string } | null
+  >(null);
 
 
   const fetchAssets = useCallback(
@@ -429,6 +499,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
         setRefreshing(true);
       }
       setErrorMessage("");
+      setTableMessage(null);
       try {
         const { data: sessionData, error: sessionError } =
           await supabase.auth.getSession();
@@ -495,11 +566,8 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
         const ownersBuffer: Record<string, OwnerInfo> = {};
 
         const normalized = items.map((item) => {
-          const quantity =
-            typeof item.quantity === "number" && item.quantity > 0
-              ? item.quantity
-              : 1;
-          const ownerProfile = item.support_owner_profile;
+          const normalizedItem = normalizeAsset(item);
+          const ownerProfile = normalizedItem.support_owner_profile;
           if (ownerProfile?.id) {
             ownersBuffer[ownerProfile.id] = {
               full_name:
@@ -511,11 +579,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
               role: ownerProfile.role || null,
             };
           }
-          return {
-            ...item,
-            quantity,
-            inventoried: Boolean(item.inventoried),
-          } as AssetRecord;
+          return normalizedItem;
         });
 
         if (Object.keys(ownersBuffer).length) {
@@ -582,6 +646,10 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     fetchAssets();
     fetchSupportUsers();
   }, [fetchAssets, fetchSupportUsers]);
+
+  useEffect(() => {
+    setTableMessage(null);
+  }, [filters]);
 
   const handleRefresh = useCallback(() => {
     if (!refreshing) {
@@ -650,6 +718,31 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     };
   }, [assets]);
 
+  const filteredAssets = useMemo(() => {
+    const term = filters.search.trim().toLowerCase();
+    return assets.filter((asset) => {
+      const ownerId =
+        asset.support_owner_profile?.id || asset.support_owner || "";
+      const matchesTerm =
+        !term ||
+        asset.name.toLowerCase().includes(term) ||
+        asset.asset_code.toLowerCase().includes(term) ||
+        CATEGORY_LABEL[asset.category].toLowerCase().includes(term) ||
+        (asset.description
+          ? asset.description.toLowerCase().includes(term)
+          : false);
+      const matchesCategory =
+        filters.category === "all" || asset.category === filters.category;
+      const matchesOwner =
+        filters.owner === "all" ||
+        (filters.owner === "__none" && !ownerId) ||
+        ownerId === filters.owner;
+      const matchesStatus =
+        filters.status === "all" || asset.status === filters.status;
+      return matchesTerm && matchesCategory && matchesOwner && matchesStatus;
+    });
+  }, [assets, filters]);
+
   const groupedAssets = useMemo(() => {
     const base = CATEGORY_ORDER.reduce(
       (acc, category) => {
@@ -659,7 +752,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       {} as Record<AssetCategory, AssetRecord[]>
     );
 
-    assets.forEach((asset) => {
+    filteredAssets.forEach((asset) => {
       const category = (
         CATEGORY_ORDER.includes(asset.category)
           ? asset.category
@@ -673,7 +766,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     });
 
     return base;
-  }, [assets]);
+  }, [filteredAssets]);
 
   const categoriesWithData = CATEGORY_ORDER.filter(
     (category) => groupedAssets[category]?.length
@@ -715,11 +808,212 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     }));
   };
 
+  const handleFilterSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { value } = event.target;
+    setFilters((prev) => ({
+      ...prev,
+      search: value,
+    }));
+  };
+
+  const handleFilterSelectChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const field = event.target.name as keyof FiltersState;
+    const value = event.target.value;
+    setFilters((prev) => {
+      if (field === "category") {
+        const nextValue =
+          value === "all" ? "all" : (value as AssetCategory);
+        return { ...prev, category: nextValue };
+      }
+      if (field === "status") {
+        const nextValue = value === "all" ? "all" : (value as AssetStatus);
+        return { ...prev, status: nextValue };
+      }
+      if (field === "owner") {
+        const nextValue =
+          value === "all"
+            ? "all"
+            : value === "__none"
+            ? "__none"
+            : value;
+        return { ...prev, owner: nextValue };
+      }
+      return prev;
+    });
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      search: "",
+      category: "all",
+      owner: "all",
+      status: "all",
+    });
+  };
+
   const handleResetForm = () => {
     setFormState({ ...DEFAULT_FORM_STATE });
     setFormStatus("idle");
     setFormMessage("");
   };
+
+  const handleOwnerChange = useCallback(
+    async (assetId: string, ownerId: string) => {
+      const target = assets.find((asset) => asset.id === assetId);
+      if (!target) return;
+
+      const desiredOwner = ownerId || "";
+      const currentOwner =
+        target.support_owner_profile?.id || target.support_owner || "";
+
+      if (desiredOwner === currentOwner) {
+        return;
+      }
+
+      setTableMessage(null);
+      setUpdatingOwners((prev) => ({ ...prev, [assetId]: true }));
+
+      const cleanup = () => {
+        setUpdatingOwners((prev) => {
+          const next = { ...prev };
+          delete next[assetId];
+          return next;
+        });
+      };
+
+      try {
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.warn(
+            "[AssetManagement] getSession (update owner):",
+            sessionError.message
+          );
+        }
+
+        const token = sessionData?.session?.access_token || null;
+        const fallbackUser = currentUser && currentUser.id ? currentUser : null;
+        const fallbackRole = fallbackUser?.role
+          ? String(fallbackUser.role).toLowerCase()
+          : null;
+
+        if (!token && (!fallbackUser || fallbackRole !== "admin")) {
+          setTableMessage({
+            tone: "error",
+            text: "Somente administradores autenticados podem atualizar responsáveis.",
+          });
+          return;
+        }
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        } else if (fallbackUser) {
+          headers["X-Asset-User-Id"] = fallbackUser.id;
+          if (fallbackRole) headers["X-Asset-User-Role"] = fallbackRole;
+          if (fallbackUser.email)
+            headers["X-Asset-User-Email"] = fallbackUser.email;
+        }
+
+        const endpoint = apiUrl(
+          `/api/assets?id=${encodeURIComponent(assetId)}`
+        );
+        const response = await fetch(endpoint, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({
+            support_owner: ownerId || null,
+          }),
+        });
+
+        if (!response.ok) {
+          let detail: any = null;
+          try {
+            detail = await response.json();
+          } catch (_ignore) {
+            detail = null;
+          }
+          const message = detail?.error || `Status ${response.status}`;
+          console.warn("[AssetManagement] update owner:", message);
+          setTableMessage({
+            tone: "error",
+            text: "Não foi possível atualizar o responsável: " + message,
+          });
+          return;
+        }
+
+        let payload: { data?: unknown } | null = null;
+        try {
+          payload = await response.json();
+        } catch (_ignore) {
+          payload = null;
+        }
+
+        const updatedRaw = payload?.data ?? null;
+        if (!updatedRaw) {
+          setTableMessage({
+            tone: "error",
+            text: "Resposta inesperada ao atualizar responsável.",
+          });
+          return;
+        }
+
+        const updatedAsset = normalizeAsset(updatedRaw);
+        const ownerProfile = updatedAsset.support_owner_profile;
+        if (ownerProfile?.id) {
+          setOwnersMap((prev) => ({
+            ...prev,
+            [ownerProfile.id]: {
+              full_name:
+                typeof ownerProfile.full_name === "string" &&
+                ownerProfile.full_name.trim()
+                  ? ownerProfile.full_name.trim()
+                  : ownerProfile.email || null,
+              email: ownerProfile.email || null,
+              role: ownerProfile.role || null,
+            },
+          }));
+          setSupportUsers((prev) => {
+            if (prev.some((user) => user.id === ownerProfile.id)) {
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                id: ownerProfile.id,
+                full_name:
+                  (typeof ownerProfile.full_name === "string" &&
+                    ownerProfile.full_name.trim()) ||
+                  ownerProfile.email ||
+                  "Sem nome",
+                email: ownerProfile.email || "",
+              },
+            ];
+          });
+        }
+
+        setAssets((prev) =>
+          prev.map((asset) => (asset.id === assetId ? updatedAsset : asset))
+        );
+        setTableMessage({
+          tone: "success",
+          text: "Responsável atualizado com sucesso.",
+        });
+      } catch (cause) {
+        console.warn("[AssetManagement] update owner: unexpected", cause);
+        setTableMessage({
+          tone: "error",
+          text: "Erro inesperado ao atualizar responsável.",
+        });
+      } finally {
+        cleanup();
+      }
+    },
+    [assets, currentUser]
+  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -886,6 +1180,81 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           </SectionFeedback>
         )}
       </SectionHeader>
+
+      <Card>
+        <CardHeaderBlock>
+          <CardTitleLabel>Filtrar inventário</CardTitleLabel>
+          <CardSubtitle>
+            Combine filtros para localizar ativos por código, categoria ou responsável.
+          </CardSubtitle>
+        </CardHeaderBlock>
+        <FilterToolbar>
+          <FilterField>
+            <FieldLabel htmlFor="filter-search">Buscar</FieldLabel>
+            <Input
+              id="filter-search"
+              name="filter-search"
+              placeholder="Código, ativo ou palavra-chave"
+              value={filters.search}
+              onChange={handleFilterSearchChange}
+            />
+          </FilterField>
+          <FilterField>
+            <FieldLabel htmlFor="filter-category">Categoria</FieldLabel>
+            <Select
+              id="filter-category"
+              name="category"
+              value={filters.category}
+              onChange={handleFilterSelectChange}
+            >
+              <option value="all">Todas as categorias</option>
+              {CATEGORY_ORDER.map((category) => (
+                <option key={category} value={category}>
+                  {CATEGORY_LABEL[category]}
+                </option>
+              ))}
+            </Select>
+          </FilterField>
+          <FilterField>
+            <FieldLabel htmlFor="filter-status">Status</FieldLabel>
+            <Select
+              id="filter-status"
+              name="status"
+              value={filters.status}
+              onChange={handleFilterSelectChange}
+            >
+              <option value="all">Todos os status</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {STATUS_BADGE[status]?.label ?? status}
+                </option>
+              ))}
+            </Select>
+          </FilterField>
+          <FilterField>
+            <FieldLabel htmlFor="filter-owner">Responsável</FieldLabel>
+            <Select
+              id="filter-owner"
+              name="owner"
+              value={filters.owner}
+              onChange={handleFilterSelectChange}
+            >
+              <option value="all">Todos os responsáveis</option>
+              <option value="__none">Sem responsável</option>
+              {supportUsers.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.full_name}
+                </option>
+              ))}
+            </Select>
+          </FilterField>
+          <FilterActions>
+            <Button type="button" variant="ghost" onClick={handleResetFilters}>
+              Limpar filtros
+            </Button>
+          </FilterActions>
+        </FilterToolbar>
+      </Card>
 
       <MetricsGrid>
         <Card>
@@ -1177,7 +1546,13 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
             <EmptyState>Nenhum ativo cadastrado até o momento.</EmptyState>
           </Card>
         ) : (
-          categoriesWithData.map((category) => {
+          <>
+            {tableMessage && (
+              <TableFeedback tone={tableMessage.tone}>
+                {tableMessage.text}
+              </TableFeedback>
+            )}
+            {categoriesWithData.map((category) => {
             const list = groupedAssets[category];
             const unitCount = list.reduce(
               (acc, asset) => acc + (asset.quantity || 0),
@@ -1187,7 +1562,6 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
               unitCount !== list.length
                 ? `${list.length} registros • ${unitCount} unidades`
                 : `${list.length} ativos catalogados`;
-
             return (
               <Card key={category}>
                 <CardHeaderBlock>
@@ -1227,9 +1601,27 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                           : asset.support_owner
                           ? ownersMap[asset.support_owner]
                           : undefined;
-                        const ownerLabel = ownerMeta?.full_name?.trim()
-                          ? ownerMeta.full_name.trim()
-                          : ownerMeta?.email || "—";
+                        const currentOwnerId =
+                          asset.support_owner_profile?.id ||
+                          asset.support_owner ||
+                          "";
+                        const ownerOptionMissing =
+                          Boolean(currentOwnerId) &&
+                          !supportUsers.some((user) => user.id === currentOwnerId);
+                        const ownerSelectOptions =
+                          ownerOptionMissing && ownerMeta
+                            ? [
+                                ...supportUsers,
+                                {
+                                  id: currentOwnerId,
+                                  full_name:
+                                    ownerMeta.full_name ||
+                                    ownerMeta.email ||
+                                    "Responsável atual",
+                                  email: ownerMeta.email || "",
+                                },
+                              ]
+                            : supportUsers;
                         const nextAction = asset.license_expiry
                           ? `Renovar até ${formatDate(asset.license_expiry)}`
                           : asset.next_maintenance_date
@@ -1250,7 +1642,34 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                                   : "Local não informado"}
                               </AssetMeta>
                             </TableCell>
-                            <TableCell>{ownerLabel}</TableCell>
+                            <TableCell>
+                              <Select
+                                value={currentOwnerId}
+                                onChange={(event) =>
+                                  handleOwnerChange(asset.id, event.target.value)
+                                }
+                                disabled={Boolean(updatingOwners[asset.id])}
+                                style={{ minWidth: 200 }}
+                              >
+                                <option value="">Sem responsável</option>
+                                {ownerSelectOptions.map((user) => (
+                                  <option key={user.id} value={user.id}>
+                                    {user.full_name}
+                                  </option>
+                                ))}
+                              </Select>
+                              {updatingOwners[asset.id] ? (
+                                <OwnerHint>Atualizando...</OwnerHint>
+                              ) : currentOwnerId ? (
+                                ownerMeta?.email ? (
+                                  <OwnerHint>{ownerMeta.email}</OwnerHint>
+                                ) : null
+                              ) : (
+                                <OwnerHint>
+                                  Defina um responsável para aparecer no painel de suporte.
+                                </OwnerHint>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge tone="info">
                                 {LIFECYCLE_LABEL[asset.lifecycle_stage]}
@@ -1278,7 +1697,8 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                 </TableWrapper>
               </Card>
             );
-          })
+          })}
+          </>
         )}
       </CategoryStack>
     </Section>

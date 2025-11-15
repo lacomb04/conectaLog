@@ -218,6 +218,67 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  res.setHeader("Allow", "GET, POST");
+  if (req.method === "PATCH") {
+    if ((profile.role || "").toLowerCase() !== "admin") {
+      res
+        .status(403)
+        .json({ error: "Somente administradores podem atualizar ativos." });
+      return;
+    }
+
+    const idParam = req.query?.id;
+    const assetId = Array.isArray(idParam) ? idParam[0] : idParam;
+    if (!assetId) {
+      res.status(400).json({ error: "Identificador do ativo ausente." });
+      return;
+    }
+
+    const payload = req.body ?? {};
+    const updates = {};
+
+    if (Object.prototype.hasOwnProperty.call(payload, "support_owner")) {
+      updates.support_owner = payload.support_owner || null;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "inventoried")) {
+      updates.inventoried = Boolean(payload.inventoried);
+    }
+
+    if (!Object.keys(updates).length) {
+      res
+        .status(400)
+        .json({ error: "Nenhum campo válido informado para atualização." });
+      return;
+    }
+
+    try {
+      const { data, error: updateError } = await supabaseAdmin
+        .from("assets")
+        .update(updates)
+        .eq("id", assetId)
+        .select(
+          "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)"
+        )
+        .maybeSingle();
+
+      if (updateError) {
+        console.error("[api/assets] Falha ao atualizar ativo:", updateError.message);
+        res.status(400).json({ error: updateError.message });
+        return;
+      }
+
+      if (!data) {
+        res.status(404).json({ error: "Ativo não encontrado." });
+        return;
+      }
+
+      res.status(200).json({ data });
+    } catch (cause) {
+      console.error("[api/assets] Erro inesperado (PATCH):", cause?.message);
+      res.status(500).json({ error: "Erro inesperado ao atualizar ativo." });
+    }
+    return;
+  }
+
+  res.setHeader("Allow", "GET, POST, PATCH");
   res.status(405).json({ error: `Método ${req.method} não permitido.` });
 };
