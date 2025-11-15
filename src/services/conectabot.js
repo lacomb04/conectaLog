@@ -307,7 +307,7 @@ export function montarTicket(collected, classificacao) {
   ].join("\n");
   const prioridade = normalizarPrioridade(collected.prioridade) ||
     inferirPrioridade(classificacao, collected.impacto_operacional);
-  const categoria = classificacao?.categoria || collected.tipo_de_servico || collected.sistema_afetado || "suporte";
+  const categoria = normalizarCategoriaTicket(classificacao, collected);
   return { titulo, descricao: corpo, prioridade, categoria };
 }
 
@@ -325,4 +325,76 @@ function inferirPrioridade(classificacao, impacto = "") {
   if (impacto.includes("parad") || impacto.includes("geral")) return "high";
   if (impacto.includes("setor") || impacto.includes("equipe")) return "medium";
   return "low";
+}
+
+const CATEGORIAS_VALIDAS = ["hardware", "software", "network", "access", "other"];
+
+const MAPA_CATEGORIA_EXATA = {
+  logismax: "software",
+  scanners: "hardware",
+  scanner: "hardware",
+  tablets_motoristas: "hardware",
+  tablet: "hardware",
+  impressoras_termicas: "hardware",
+  impressora: "hardware",
+  integracoes_api: "software",
+  api: "software",
+  software_produtividade: "software",
+  erp_crm: "software",
+  rede_vpn: "network",
+  vpn: "network",
+  rede: "network",
+  wifi: "network",
+  wi_fi: "network",
+  gestao_de_acessos: "access",
+  acesso: "access",
+  seguranca: "other",
+  servidores_backup: "other",
+  backup: "other",
+  servidor: "other"
+};
+
+const REGRAS_CATEGORIA_POR_PALAVRA = [
+  { categoria: "hardware", termos: ["notebook", "computador", "pc", "desktop", "teclado", "mouse", "monitor", "periferico", "scanner", "impressora", "tablet"] },
+  { categoria: "software", termos: ["logismax", "sistema", "software", "aplicativo", "app", "office", "outlook", "teams", "licenca", "api"] },
+  { categoria: "network", termos: ["rede", "vpn", "wi-fi", "wifi", "internet", "conexao", "latencia", "roteador"] },
+  { categoria: "access", termos: ["acesso", "login", "senha", "permissao", "credencial", "bloqueio", "usuario"] },
+  { categoria: "other", termos: ["seguranc", "phishing", "backup", "firewall", "servidor"] }
+];
+
+function normalizarCategoriaTicket(classificacao, collected) {
+  const candidatos = [
+    classificacao?.categoria,
+    classificacao?.subtipo,
+    collected?.tipo_de_servico,
+    collected?.sistema_afetado,
+    collected?.descricao_do_problema
+  ];
+
+  for (const candidato of candidatos) {
+    const normalizada = mapearCategoria(candidato);
+    if (normalizada) return normalizada;
+  }
+
+  return "other";
+}
+
+function removerAcentos(texto = "") {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function mapearCategoria(valor) {
+  if (!valor) return null;
+  const texto = removerAcentos(String(valor).trim().toLowerCase());
+  if (!texto) return null;
+  if (CATEGORIAS_VALIDAS.includes(texto)) return texto;
+  if (MAPA_CATEGORIA_EXATA[texto]) return MAPA_CATEGORIA_EXATA[texto];
+
+  for (const regra of REGRAS_CATEGORIA_POR_PALAVRA) {
+    if (regra.termos.some((termo) => texto.includes(removerAcentos(termo)))) {
+      return regra.categoria;
+    }
+  }
+
+  return null;
 }

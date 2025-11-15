@@ -131,7 +131,7 @@ export default function ConectaBotChat({
         description: descricao,
         priority: prioridade,
         category: categoria,
-        status: "waiting",
+        status: "open",
         created_by: user?.id || null,
       };
       const payload =
