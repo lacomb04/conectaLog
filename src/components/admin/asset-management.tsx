@@ -387,6 +387,35 @@ const TableFeedback = styled.p<{ tone: "success" | "error" }>`
   margin: 0 0 12px;
 `;
 
+const EditingNotice = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  padding: 10px 16px;
+  border-radius: 14px;
+`;
+
+const EditingLabel = styled.span`
+  font-size: 0.85rem;
+  font-weight: 600;
+`;
+
+const EditingMeta = styled.span`
+  font-size: 0.8rem;
+  color: #1e3a8a;
+`;
+
+const EditingActions = styled.div`
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
 const CategoryStack = styled.div`
   display: flex;
   flex-direction: column;
@@ -428,6 +457,12 @@ const TableCell = styled.td`
   border-bottom: 1px solid #edf1f7;
 `;
 
+const TableActions = styled.div`
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+`;
+
 const OwnerHint = styled.span`
   display: block;
   margin-top: 4px;
@@ -460,6 +495,20 @@ const formatDate = (value?: string | null) => {
   return parsed.toLocaleDateString("pt-BR");
 };
 
+const toDateInputValue = (value?: string | null) => {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return parsed.toISOString().slice(0, 10);
+};
+
 type AssetManagementProps = {
   currentUser?: CurrentUser | null;
 };
@@ -488,6 +537,15 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
   const [tableMessage, setTableMessage] = useState<
     { tone: "success" | "error"; text: string } | null
   >(null);
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+
+  const isEditing = Boolean(editingAssetId);
+  const editingAsset = useMemo(() => {
+    if (!editingAssetId) {
+      return null;
+    }
+    return assets.find((asset) => asset.id === editingAssetId) || null;
+  }, [assets, editingAssetId]);
 
 
   const fetchAssets = useCallback(
@@ -855,7 +913,40 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     setFormState({ ...DEFAULT_FORM_STATE });
     setFormStatus("idle");
     setFormMessage("");
+    setEditingAssetId(null);
   };
+
+  const handleEditAsset = useCallback((asset: AssetRecord) => {
+    setEditingAssetId(asset.id);
+    setFormStatus("idle");
+    setFormMessage("");
+
+    const currentOwnerId =
+      asset.support_owner_profile?.id || asset.support_owner || "";
+
+    setFormState({
+      asset_code: asset.asset_code || "",
+      name: asset.name || "",
+      category: asset.category,
+      subcategory: asset.subcategory || "",
+      status: asset.status,
+      lifecycle_stage: asset.lifecycle_stage,
+      quantity: Math.max(1, Math.round(asset.quantity || 1)),
+      acquisition_date: toDateInputValue(asset.acquisition_date),
+      last_maintenance_date: toDateInputValue(asset.last_maintenance_date),
+      next_maintenance_date: toDateInputValue(asset.next_maintenance_date),
+      warranty_expires_at: toDateInputValue(asset.warranty_expires_at),
+      license_expiry: toDateInputValue(asset.license_expiry),
+      location: asset.location || "",
+      description: asset.description || "",
+      support_owner: currentOwnerId,
+      inventoried: Boolean(asset.inventoried),
+    });
+
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
 
   const handleOwnerChange = useCallback(
     async (assetId: string, ownerId: string) => {
@@ -1078,7 +1169,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       if (!token && fallbackRole !== "admin") {
         setFormStatus("error");
         setFormMessage(
-          "Somente administradores autenticados podem cadastrar ativos."
+          "Somente administradores autenticados podem cadastrar ou editar ativos."
         );
         return;
       }
@@ -1096,8 +1187,14 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           headers["X-Asset-User-Email"] = fallbackUser.email;
       }
 
-      const response = await fetch(apiUrl("/api/assets"), {
-        method: "POST",
+      const endpoint =
+        isEditing && editingAssetId
+          ? apiUrl(`/api/assets?id=${encodeURIComponent(editingAssetId)}`)
+          : apiUrl("/api/assets");
+      const method = isEditing && editingAssetId ? "PATCH" : "POST";
+
+      const response = await fetch(endpoint, {
+        method,
         headers,
         body: JSON.stringify(payload),
       });
@@ -1110,9 +1207,11 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           detail = null;
         }
         const message = detail?.error || `Status ${response.status}`;
-        console.warn("[AssetManagement] insert:", message);
+        console.warn("[AssetManagement] submit asset:", message);
         setFormStatus("error");
-        setFormMessage("Falha ao cadastrar ativo: " + message);
+        setFormMessage(
+          `${isEditing ? "Falha ao atualizar ativo" : "Falha ao cadastrar ativo"}: ${message}`
+        );
         return;
       }
 
@@ -1123,9 +1222,16 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
         payloadResponse = null;
       }
 
-      const createdAsset = payloadResponse?.data ?? null;
-      if (createdAsset?.support_owner_profile?.id) {
-        const ownerProfile = createdAsset.support_owner_profile;
+      const savedAssetRaw = payloadResponse?.data ?? null;
+      if (!savedAssetRaw) {
+        setFormStatus("error");
+        setFormMessage("Resposta inesperada ao salvar o ativo.");
+        return;
+      }
+
+      const savedAsset = normalizeAsset(savedAssetRaw);
+      const ownerProfile = savedAsset.support_owner_profile;
+      if (ownerProfile?.id) {
         setOwnersMap((prev) => ({
           ...prev,
           [ownerProfile.id]: {
@@ -1138,16 +1244,42 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
             role: ownerProfile.role || null,
           },
         }));
+        setSupportUsers((prev) => {
+          if (prev.some((user) => user.id === ownerProfile.id)) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: ownerProfile.id,
+              full_name:
+                (typeof ownerProfile.full_name === "string" &&
+                  ownerProfile.full_name.trim()) ||
+                ownerProfile.email ||
+                "Sem nome",
+              email: ownerProfile.email || "",
+            },
+          ];
+        });
       }
 
       setFormStatus("success");
-      setFormMessage("Ativo cadastrado com sucesso.");
+      setFormMessage(
+        isEditing ? "Ativo atualizado com sucesso." : "Ativo cadastrado com sucesso."
+      );
       setFormState({ ...DEFAULT_FORM_STATE });
+      if (isEditing) {
+        setEditingAssetId(null);
+      }
       await fetchAssets("refresh");
     } catch (cause) {
-      console.warn("[AssetManagement] insert: unexpected", cause);
+      console.warn("[AssetManagement] submit asset: unexpected", cause);
       setFormStatus("error");
-      setFormMessage("Erro inesperado ao cadastrar o ativo.");
+      setFormMessage(
+        isEditing
+          ? "Erro inesperado ao atualizar o ativo."
+          : "Erro inesperado ao cadastrar o ativo."
+      );
     } finally {
       setSaving(false);
     }
@@ -1300,6 +1432,29 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           </CardSubtitle>
         </CardHeaderBlock>
         <FormLayout onSubmit={handleSubmit}>
+          {isEditing && (
+            <EditingNotice>
+              <div>
+                <EditingLabel>Editando ativo existente</EditingLabel>
+                <EditingMeta>
+                  {(formState.asset_code || editingAsset?.asset_code || "—") +
+                    " • " +
+                    (formState.name || editingAsset?.name || "Sem nome")}
+                </EditingMeta>
+              </div>
+              <EditingActions>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetForm}
+                  disabled={saving}
+                >
+                  Cancelar edição
+                </Button>
+              </EditingActions>
+            </EditingNotice>
+          )}
           <FieldGrid>
             <Field>
               <FieldLabel htmlFor="asset_code">Código do ativo</FieldLabel>
@@ -1498,7 +1653,11 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
 
           <FormActions>
             <Button type="submit" disabled={saving}>
-              {saving ? "Salvando..." : "Cadastrar ativo"}
+              {saving
+                ? "Salvando..."
+                : isEditing
+                ? "Salvar alterações"
+                : "Cadastrar ativo"}
             </Button>
             <Button
               type="button"
@@ -1506,7 +1665,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
               onClick={handleResetForm}
               disabled={saving}
             >
-              Limpar campos
+              {isEditing ? "Limpar e cancelar" : "Limpar campos"}
             </Button>
           </FormActions>
           {formStatus !== "idle" && formMessage && (
@@ -1580,6 +1739,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                         <TableHeadCell>Próxima ação</TableHeadCell>
                         <TableHeadCell>Status</TableHeadCell>
                         <TableHeadCell>Inventário</TableHeadCell>
+                        <TableHeadCell>Ações</TableHeadCell>
                       </tr>
                     </thead>
                     <tbody>
@@ -1627,6 +1787,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                           : asset.next_maintenance_date
                           ? `Planejado para ${formatDate(asset.next_maintenance_date)}`
                           : "—";
+                        const editingThisAsset = editingAssetId === asset.id;
 
                         return (
                           <TableRow key={asset.id}>
@@ -1645,7 +1806,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                             <TableCell>
                               <Select
                                 value={currentOwnerId}
-                                onChange={(event) =>
+                                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
                                   handleOwnerChange(asset.id, event.target.value)
                                 }
                                 disabled={Boolean(updatingOwners[asset.id])}
@@ -1688,6 +1849,19 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                               <Badge tone={asset.inventoried ? "success" : "warning"}>
                                 {asset.inventoried ? "Inventariado" : "Pendente"}
                               </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <TableActions>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="soft"
+                                  onClick={() => handleEditAsset(asset)}
+                                  disabled={saving || editingThisAsset}
+                                >
+                                  {editingThisAsset ? "Em edição" : "Editar"}
+                                </Button>
+                              </TableActions>
                             </TableCell>
                           </TableRow>
                         );

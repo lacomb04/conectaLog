@@ -44,6 +44,29 @@ export interface Ticket {
   assignee?: User
 }
 
+export interface Asset {
+  id: string
+  asset_code: string
+  name: string
+  category: string
+  subcategory?: string | null
+  description?: string | null
+  status: string
+  lifecycle_stage: string
+  quantity: number
+  acquisition_date?: string | null
+  last_maintenance_date?: string | null
+  next_maintenance_date?: string | null
+  warranty_expires_at?: string | null
+  license_expiry?: string | null
+  location?: string | null
+  inventoried: boolean
+  support_owner?: string | null
+  support_owner_profile?: Pick<User, "id" | "full_name" | "email" | "role"> | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export interface Message {
   id: string
   ticket_id: string

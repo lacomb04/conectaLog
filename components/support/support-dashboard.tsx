@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import type { Ticket, User } from "@/lib/types"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import type { Asset, Ticket, User } from "@/lib/types"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,6 +16,8 @@ import Link from "next/link"
 interface SupportDashboardProps {
   initialTickets: Ticket[]
   supportUsers: User[]
+  initialAssets: Asset[]
+  currentUserId: string
 }
 
 const priorityColors = {
@@ -56,12 +58,104 @@ const statusIcons = {
   closed: XCircle,
 }
 
-export function SupportDashboard({ initialTickets, supportUsers }: SupportDashboardProps) {
+const assetCategoryLabels: Record<string, string> = {
+  hardware: "Hardware",
+  software: "Software",
+  network: "Rede",
+  peripherals: "Periféricos",
+  licenses: "Licenças",
+  mobile: "Dispositivos móveis",
+}
+
+const assetStatusMeta: Record<string, { label: string; className: string }> = {
+  "em uso": {
+    label: "Em uso",
+    className: "bg-emerald-500/10 text-emerald-700 border-emerald-200",
+  },
+  "em manutenção": {
+    label: "Em manutenção",
+    className: "bg-amber-500/10 text-amber-700 border-amber-200",
+  },
+  planejado: {
+    label: "Planejado",
+    className: "bg-sky-500/10 text-sky-700 border-sky-200",
+  },
+  obsoleto: {
+    label: "Obsoleto",
+    className: "bg-rose-500/10 text-rose-700 border-rose-200",
+  },
+}
+
+export function SupportDashboard({ initialTickets, supportUsers, initialAssets, currentUserId }: SupportDashboardProps) {
   const [tickets, setTickets] = useState<Ticket[]>(initialTickets)
   const [filterStatus, setFilterStatus] = useState<string>("all")
   const [filterPriority, setFilterPriority] = useState<string>("all")
+  const [assignedAssets, setAssignedAssets] = useState<Asset[]>(() => initialAssets ?? [])
   const supabase = getSupabaseBrowserClient()
   const { toast } = useToast()
+
+  const formatAssetDate = useCallback((value?: string | null) => {
+    if (!value) return "—"
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return "—"
+    return new Intl.DateTimeFormat("pt-BR").format(parsed)
+  }, [])
+
+  const sortAssets = useCallback((list: Asset[]) => {
+    return [...list].sort((a, b) => {
+      const categoryCompare = (a.category || "").localeCompare(b.category || "")
+      if (categoryCompare !== 0) return categoryCompare
+      return a.name.localeCompare(b.name)
+    })
+  }, [])
+
+  const upsertAssignedAsset = useCallback(
+    (asset: Asset) => {
+      setAssignedAssets((prev) => {
+        const index = prev.findIndex((item) => item.id === asset.id)
+        if (index >= 0) {
+          const next = [...prev]
+          next[index] = asset
+          return sortAssets(next)
+        }
+        return sortAssets([...prev, asset])
+      })
+    },
+    [sortAssets],
+  )
+
+  const removeAssignedAsset = useCallback((assetId: string) => {
+    setAssignedAssets((prev) => prev.filter((asset) => asset.id !== assetId))
+  }, [])
+
+  const nextActionLabel = useCallback(
+    (asset: Asset) => {
+      if (asset.license_expiry) {
+        return `Renovar licença até ${formatAssetDate(asset.license_expiry)}`
+      }
+      if (asset.next_maintenance_date) {
+        return `Planejar manutenção em ${formatAssetDate(asset.next_maintenance_date)}`
+      }
+      if (asset.last_maintenance_date) {
+        return `Última manutenção em ${formatAssetDate(asset.last_maintenance_date)}`
+      }
+      return "Nenhuma ação futura registrada"
+    },
+    [formatAssetDate],
+  )
+
+  const assetSummary = useMemo(() => {
+    const inventoriedCount = assignedAssets.filter((asset) => asset.inventoried).length
+    return {
+      total: assignedAssets.length,
+      inventoried: inventoriedCount,
+      pending: assignedAssets.length - inventoriedCount,
+    }
+  }, [assignedAssets])
+
+  useEffect(() => {
+    setAssignedAssets(sortAssets(initialAssets ?? []))
+  }, [initialAssets, sortAssets])
 
   useEffect(() => {
     const channel = supabase
@@ -111,6 +205,62 @@ export function SupportDashboard({ initialTickets, supportUsers }: SupportDashbo
       supabase.removeChannel(channel)
     }
   }, [supabase, toast])
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return
+    }
+
+    const channel = supabase
+      .channel(`assets-owner-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "assets",
+        },
+        async (payload) => {
+          const newOwner = payload.new?.support_owner ?? null
+          const previousOwner = payload.old?.support_owner ?? null
+
+          if (payload.eventType === "DELETE") {
+            if (payload.old?.id && previousOwner === currentUserId) {
+              removeAssignedAsset(payload.old.id as string)
+            }
+            return
+          }
+
+          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+            if (newOwner === currentUserId) {
+              const { data, error } = await supabase
+                .from("assets")
+                .select(
+                  "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)"
+                )
+                .eq("id", payload.new?.id)
+                .maybeSingle()
+
+              if (error) {
+                console.warn("[support] Falha ao sincronizar ativo:", error.message)
+                return
+              }
+
+              if (data) {
+                upsertAssignedAsset(data as Asset)
+              }
+            } else if (previousOwner === currentUserId && payload.new?.id) {
+              removeAssignedAsset(payload.new.id as string)
+            }
+          }
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, currentUserId, removeAssignedAsset, upsertAssignedAsset])
 
   const handleAssign = async (ticketId: string, userId: string) => {
     try {
@@ -236,6 +386,69 @@ export function SupportDashboard({ initialTickets, supportUsers }: SupportDashbo
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ativos de TI atribuídos</CardTitle>
+          <CardDescription>Monitore os ativos sob sua responsabilidade.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {assignedAssets.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum ativo atribuído a você no momento.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground md:text-sm">
+                <span>Total: {assetSummary.total}</span>
+                <span>Inventariados: {assetSummary.inventoried}</span>
+                <span>Pendentes: {assetSummary.pending}</span>
+              </div>
+              <div className="space-y-3">
+                {assignedAssets.map((asset) => {
+                  const statusMeta =
+                    assetStatusMeta[asset.status] ?? {
+                      label: asset.status,
+                      className: "bg-slate-500/10 text-slate-700 border-slate-200",
+                    }
+                  const inventoryBadgeClass = asset.inventoried
+                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-200"
+                    : "bg-amber-500/10 text-amber-700 border-amber-200"
+
+                  return (
+                    <div
+                      key={asset.id}
+                      className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold md:text-base">
+                          {asset.asset_code} • {asset.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground md:text-sm">
+                          {assetCategoryLabels[asset.category] ?? asset.category}
+                          {asset.location ? ` • ${asset.location}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        <Badge variant="outline" className={statusMeta.className}>
+                          {statusMeta.label}
+                        </Badge>
+                        <Badge variant="outline" className={inventoryBadgeClass}>
+                          {asset.inventoried ? "Inventariado" : "Inventário pendente"}
+                        </Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground md:text-right md:text-sm">
+                        <p>{nextActionLabel(asset)}</p>
+                        {asset.warranty_expires_at && (
+                          <p>Garantia: {formatAssetDate(asset.warranty_expires_at)}</p>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Filters */}
       <Card>

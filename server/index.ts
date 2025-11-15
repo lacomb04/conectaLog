@@ -26,6 +26,28 @@ const supabaseAdmin = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     })
   : null;
 
+const validCategories = new Set([
+  "hardware",
+  "software",
+  "network",
+  "peripherals",
+  "licenses",
+  "mobile",
+]);
+const validStatuses = new Set([
+  "em uso",
+  "em manutenção",
+  "planejado",
+  "obsoleto",
+]);
+const validLifecycleStages = new Set([
+  "acquisition",
+  "deployment",
+  "use",
+  "maintenance",
+  "disposal",
+]);
+
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.warn(
     "[proxy] SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurados. Rotas de ativos ficarão indisponíveis."
@@ -280,11 +302,110 @@ app.patch("/api/assets", requireSupabaseRequester, async (req, res) => {
 
   const payload = req.body ?? {};
   const updates: Record<string, any> = {};
+  const hasField = (key: string) => Object.prototype.hasOwnProperty.call(payload, key);
 
-  if (Object.prototype.hasOwnProperty.call(payload, "support_owner")) {
-    updates.support_owner = payload.support_owner || null;
+  if (hasField("asset_code")) {
+    if (typeof payload.asset_code !== "string" || !payload.asset_code.trim()) {
+      res.status(400).json({ error: "Código do ativo inválido." });
+      return;
+    }
+    updates.asset_code = payload.asset_code.trim().toUpperCase();
   }
-  if (Object.prototype.hasOwnProperty.call(payload, "inventoried")) {
+
+  if (hasField("name")) {
+    if (typeof payload.name !== "string" || !payload.name.trim()) {
+      res.status(400).json({ error: "Nome do ativo inválido." });
+      return;
+    }
+    updates.name = payload.name.trim();
+  }
+
+  if (hasField("category")) {
+    if (typeof payload.category !== "string" || !validCategories.has(payload.category)) {
+      res.status(400).json({ error: "Categoria informada é inválida." });
+      return;
+    }
+    updates.category = payload.category;
+  }
+
+  if (hasField("status")) {
+    if (typeof payload.status !== "string" || !validStatuses.has(payload.status)) {
+      res.status(400).json({ error: "Status informado é inválido." });
+      return;
+    }
+    updates.status = payload.status;
+  }
+
+  if (hasField("lifecycle_stage")) {
+    if (
+      typeof payload.lifecycle_stage !== "string" ||
+      !validLifecycleStages.has(payload.lifecycle_stage)
+    ) {
+      res.status(400).json({ error: "Etapa do ciclo de vida inválida." });
+      return;
+    }
+    updates.lifecycle_stage = payload.lifecycle_stage;
+  }
+
+  if (hasField("quantity")) {
+    const numericQuantity = Number(payload.quantity);
+    if (!Number.isFinite(numericQuantity) || numericQuantity <= 0) {
+      res.status(400).json({ error: "Quantidade informada é inválida." });
+      return;
+    }
+    updates.quantity = Math.max(1, Math.round(numericQuantity));
+  }
+
+  const nullableTextFields = ["subcategory", "description", "location"];
+  nullableTextFields.forEach((field) => {
+    if (!hasField(field)) return;
+    const raw = payload[field];
+    if (raw === null || raw === undefined) {
+      updates[field] = null;
+      return;
+    }
+    if (typeof raw !== "string") {
+      updates[field] = null;
+      return;
+    }
+    const trimmed = raw.trim();
+    updates[field] = trimmed.length ? trimmed : null;
+  });
+
+  const dateFields = [
+    "acquisition_date",
+    "last_maintenance_date",
+    "next_maintenance_date",
+    "warranty_expires_at",
+    "license_expiry",
+  ];
+  dateFields.forEach((field) => {
+    if (!hasField(field)) return;
+    const raw = payload[field];
+    if (raw === null || raw === undefined) {
+      updates[field] = null;
+      return;
+    }
+    if (typeof raw !== "string") {
+      updates[field] = null;
+      return;
+    }
+    const trimmed = raw.trim();
+    updates[field] = trimmed.length ? trimmed : null;
+  });
+
+  if (hasField("support_owner")) {
+    const ownerRaw = payload.support_owner;
+    if (ownerRaw === null || ownerRaw === undefined) {
+      updates.support_owner = null;
+    } else if (typeof ownerRaw === "string" && ownerRaw.trim()) {
+      updates.support_owner = ownerRaw.trim();
+    } else {
+      updates.support_owner = null;
+    }
+  }
+
+  if (hasField("inventoried")) {
     updates.inventoried = Boolean(payload.inventoried);
   }
 
@@ -294,6 +415,8 @@ app.patch("/api/assets", requireSupabaseRequester, async (req, res) => {
       .json({ error: "Nenhum campo válido informado para atualização." });
     return;
   }
+
+  updates.updated_at = new Date().toISOString();
 
   try {
     const { data, error } = await supabaseAdmin
