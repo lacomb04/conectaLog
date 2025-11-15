@@ -77,46 +77,99 @@ async function requireSupabaseRequester(
   }
 
   const authorization = req.headers.authorization || "";
-  if (!authorization.toLowerCase().startsWith("bearer ")) {
-    res.status(401).json({ error: "Token de acesso ausente." });
-    return;
-  }
+  const lowerAuth = authorization.toLowerCase();
+  const allowedRoles = new Set(["admin", "support"]);
 
-  const token = authorization.slice(7).trim();
-  if (!token) {
-    res.status(401).json({ error: "Token de acesso inválido." });
-    return;
-  }
+  let profile: RequesterProfile | null = null;
 
-  try {
-    const {
-      data: { user },
-      error,
-    } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) {
-      res.status(401).json({ error: "Sessão expirada ou inválida." });
+  if (lowerAuth.startsWith("bearer ")) {
+    const token = authorization.slice(7).trim();
+    if (!token) {
+      res.status(401).json({ error: "Token de acesso inválido." });
       return;
     }
 
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("users")
-      .select("id, role, full_name, email")
-      .eq("id", user.id)
-      .maybeSingle();
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabaseAdmin.auth.getUser(token);
+      if (error || !user) {
+        res.status(401).json({ error: "Sessão expirada ou inválida." });
+        return;
+      }
 
-    if (profileError || !profile) {
-      res
-        .status(403)
-        .json({ error: "Perfil do usuário não encontrado ou sem permissão." });
+      const { data: fetchedProfile, error: profileError } = await supabaseAdmin
+        .from("users")
+        .select("id, role, full_name, email")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const normalizedRole = (fetchedProfile?.role || "").toLowerCase();
+
+      if (profileError || !fetchedProfile || !allowedRoles.has(normalizedRole)) {
+        res
+          .status(403)
+          .json({ error: "Perfil do usuário não encontrado ou sem permissão." });
+        return;
+      }
+
+      profile = { ...fetchedProfile, role: normalizedRole } as RequesterProfile;
+    } catch (cause: any) {
+      console.error(
+        "[proxy] Falha ao validar sessão Supabase:",
+        cause?.message
+      );
+      res.status(500).json({ error: "Erro ao validar sessão." });
+      return;
+    }
+  }
+
+  if (!profile) {
+    const headerUserId = String(req.header("x-asset-user-id") || "").trim();
+    if (!headerUserId) {
+      res.status(401).json({ error: "Token de acesso ausente." });
       return;
     }
 
-    (req as any).supabaseProfile = profile;
-    next();
-  } catch (cause: any) {
-    console.error("[proxy] Falha ao validar sessão Supabase:", cause?.message);
-    res.status(500).json({ error: "Erro ao validar sessão." });
+    try {
+      const { data: fetchedProfile, error } = await supabaseAdmin
+        .from("users")
+        .select("id, role, full_name, email")
+        .eq("id", headerUserId)
+        .maybeSingle();
+
+      const normalizedRole = (fetchedProfile?.role || "").toLowerCase();
+
+      if (error || !fetchedProfile || !allowedRoles.has(normalizedRole)) {
+        res
+          .status(403)
+          .json({ error: "Usuário sem permissão para acessar os ativos." });
+        return;
+      }
+
+      const claimedRole = String(req.header("x-asset-user-role") || "").trim();
+      if (
+        claimedRole &&
+        claimedRole.toLowerCase() !== (fetchedProfile.role || "").toLowerCase()
+      ) {
+        res.status(403).json({ error: "Perfil informado não confere." });
+        return;
+      }
+
+      profile = { ...fetchedProfile, role: normalizedRole } as RequesterProfile;
+    } catch (cause: any) {
+      console.error(
+        "[proxy] Falha ao validar cabeçalho de usuário:",
+        cause?.message
+      );
+      res.status(500).json({ error: "Erro ao validar usuário." });
+      return;
+    }
   }
+
+  (req as any).supabaseProfile = profile;
+  next();
 }
 
 app.get("/api/assets", requireSupabaseRequester, async (req, res) => {

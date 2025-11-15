@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../services/supabaseClient";
 import SupportDashboard from "./SupportDashboard";
 import { useNavigate } from "react-router-dom";
@@ -51,27 +51,49 @@ const modalStyle: React.CSSProperties = {
 const normalizeUser = (raw: any) => {
   if (!raw) return null;
   if (raw.user_metadata) {
+    const roleValue =
+      raw.user_metadata?.role || raw.role || raw.user_metadata?.app_role;
+    const normalizedRole =
+      typeof roleValue === "string" && roleValue.trim()
+        ? roleValue.trim().toLowerCase()
+        : "admin";
     return {
       id: raw.id,
       email: raw.email || raw.user_metadata?.email || "",
       full_name:
         raw.user_metadata?.full_name || raw.email || raw.user_metadata?.name,
-      role: raw.user_metadata?.role || raw.role || "admin",
+      role: normalizedRole,
     };
   }
+  const roleValue = raw.role;
+  const normalizedRole =
+    typeof roleValue === "string" && roleValue.trim()
+      ? roleValue.trim().toLowerCase()
+      : "admin";
   return {
     id: raw.id,
     email: raw.email || "",
     full_name: raw.full_name || raw.email || "Administrador",
-    role: raw.role || "admin",
+    role: normalizedRole,
   };
 };
 
-const AdminDashboard: React.FC<{ searchTerm?: string }> = ({
+type AdminDashboardProps = {
+  user: any;
+  searchTerm?: string;
+};
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  user: initialUser,
   searchTerm = "",
 }) => {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const normalizedInitialUser = useMemo(
+    () => normalizeUser(initialUser),
+    [initialUser]
+  );
+
+  const [user, setUser] = useState<any>(normalizedInitialUser);
+  const [loading, setLoading] = useState(!normalizedInitialUser);
   const [kbOpen, setKbOpen] = useState(false);
   const [kbForm, setKbForm] = useState({
     title: "",
@@ -97,6 +119,9 @@ const AdminDashboard: React.FC<{ searchTerm?: string }> = ({
       if (error) console.warn("[AdminDashboard] getSession:", error.message);
       if (!active) return;
       let current = normalizeUser(session?.user);
+      if (!current && normalizedInitialUser) {
+        current = normalizedInitialUser;
+      }
       if (!current) {
         const { data: fallback, error: fbError } = await supabase
           .from("users")
@@ -115,14 +140,22 @@ const AdminDashboard: React.FC<{ searchTerm?: string }> = ({
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(normalizeUser(session?.user));
+      const normalized = normalizeUser(session?.user);
+      setUser(normalized ?? normalizedInitialUser ?? null);
       setLoading(false);
     });
     return () => {
       active = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [normalizedInitialUser]);
+
+  useEffect(() => {
+    setUser(normalizedInitialUser);
+    if (normalizedInitialUser) {
+      setLoading(false);
+    }
+  }, [normalizedInitialUser]);
 
   useEffect(() => {
     (async () => {
@@ -248,7 +281,7 @@ const AdminDashboard: React.FC<{ searchTerm?: string }> = ({
       />
 
       <div style={{ padding: "32px 24px" }}>
-        <AssetManagement />
+        <AssetManagement currentUser={user} />
       </div>
 
       {kbOpen && (

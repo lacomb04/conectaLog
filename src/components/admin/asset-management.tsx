@@ -59,6 +59,13 @@ type OwnerInfo = {
   role?: string | null;
 };
 
+type CurrentUser = {
+  id: string;
+  role?: string | null;
+  full_name?: string | null;
+  email?: string | null;
+};
+
 type AssetRecord = {
   id: string;
   asset_code: string;
@@ -393,7 +400,11 @@ const formatDate = (value?: string | null) => {
   return parsed.toLocaleDateString("pt-BR");
 };
 
-const AssetManagement: React.FC = () => {
+type AssetManagementProps = {
+  currentUser?: CurrentUser | null;
+};
+
+const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null }) => {
   const [assets, setAssets] = useState<AssetRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -429,8 +440,13 @@ const AssetManagement: React.FC = () => {
           );
         }
 
-        const token = sessionData?.session?.access_token;
-        if (!token) {
+        const token = sessionData?.session?.access_token || null;
+        const fallbackUser = currentUser && currentUser.id ? currentUser : null;
+        const fallbackRole = fallbackUser?.role
+          ? String(fallbackUser.role).toLowerCase()
+          : null;
+
+        if (!token && !fallbackUser) {
           setErrorMessage(
             "Sessão expirada. Faça login novamente para visualizar os ativos."
           );
@@ -438,10 +454,17 @@ const AssetManagement: React.FC = () => {
           return;
         }
 
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        } else if (fallbackUser) {
+          headers["X-Asset-User-Id"] = fallbackUser.id;
+          if (fallbackRole) headers["X-Asset-User-Role"] = fallbackRole;
+          if (fallbackUser.email) headers["X-Asset-User-Email"] = fallbackUser.email;
+        }
+
         const response = await fetch(apiUrl("/api/assets"), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers,
         });
 
         if (!response.ok) {
@@ -512,7 +535,7 @@ const AssetManagement: React.FC = () => {
         }
       }
     },
-    []
+    [currentUser]
   );
 
   const fetchSupportUsers = useCallback(async () => {
@@ -738,22 +761,50 @@ const AssetManagement: React.FC = () => {
         await supabase.auth.getSession();
 
       if (sessionError) {
-        console.warn("[AssetManagement] getSession (submit):", sessionError.message);
+        console.warn(
+          "[AssetManagement] getSession (submit):",
+          sessionError.message
+        );
       }
 
-      const token = sessionData?.session?.access_token;
-      if (!token) {
+      const token = sessionData?.session?.access_token || null;
+      const fallbackUser = currentUser && currentUser.id ? currentUser : null;
+      const fallbackRole = fallbackUser?.role
+        ? String(fallbackUser.role).toLowerCase()
+        : null;
+
+      if (!token && !fallbackUser) {
         setFormStatus("error");
-        setFormMessage("Sessão expirada. Entre novamente para cadastrar ativos.");
+        setFormMessage(
+          "Sessão expirada. Entre novamente para cadastrar ativos."
+        );
         return;
+      }
+
+      if (!token && fallbackRole !== "admin") {
+        setFormStatus("error");
+        setFormMessage(
+          "Somente administradores autenticados podem cadastrar ativos."
+        );
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      } else if (fallbackUser) {
+        headers["X-Asset-User-Id"] = fallbackUser.id;
+        if (fallbackRole)
+          headers["X-Asset-User-Role"] = fallbackRole;
+        if (fallbackUser.email)
+          headers["X-Asset-User-Email"] = fallbackUser.email;
       }
 
       const response = await fetch(apiUrl("/api/assets"), {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 
