@@ -19,41 +19,13 @@ const STATUS_LABEL = {
 };
 
 const TicketCard = styled(Card)`
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => openRatingModal(t)}
-                          >
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-4);
   padding: var(--space-4);
-  z-index: 3000;
-`;
-                              await supabase
-                                .from("tickets")
-                                .update({
-                                  status: "in_progress",
-                                  resolution_rating: null,
-                                  resolution_feedback: null,
-                                  resolution_confirmed_at: null,
-                                  resolution_confirmed_by: null,
-                                  closed_at: null,
-                                })
-                                .eq("id", t.id);
   border-radius: 24px;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
-  display: flex;
-                                    ? {
-                                        ...x,
-                                        status: "in_progress",
-                                        resolution_rating: null,
-                                        resolution_feedback: null,
-                                        resolution_confirmed_at: null,
-                                        resolution_confirmed_by: null,
-                                        closed_at: null,
-                                      }
-  gap: var(--space-4);
+  background: rgba(255, 255, 255, 0.95);
 `;
 
 const ProgressTrack = styled.div`
@@ -164,6 +136,86 @@ export default function EmployeeHome({ user, searchTerm }) {
       return;
     }
     setTickets((prev) => prev.filter((t) => t.id !== ticketId));
+  }
+
+  async function handleReopenTicket(ticket) {
+    const { error } = await supabase
+      .from("tickets")
+      .update({
+        status: "in_progress",
+        resolution_rating: null,
+        resolution_feedback: null,
+        resolution_confirmed_at: null,
+        resolution_confirmed_by: null,
+        closed_at: null,
+      })
+      .eq("id", ticket.id)
+      .eq("created_by", user.id);
+
+    if (error) {
+      alert("Não foi possível reabrir o chamado. Tente novamente.");
+      return;
+    }
+
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ticket.id
+          ? {
+              ...t,
+              status: "in_progress",
+              resolution_rating: null,
+              resolution_feedback: null,
+              resolution_confirmed_at: null,
+              resolution_confirmed_by: null,
+              closed_at: null,
+            }
+          : t,
+      ),
+    );
+  }
+
+  async function handleCloseWithoutRating() {
+    if (!ratingModal.ticket) return;
+
+    setRatingLoading(true);
+    const nowIso = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("tickets")
+      .update({
+        status: "closed",
+        closed_at: nowIso,
+        resolution_rating: null,
+        resolution_feedback: null,
+        resolution_confirmed_at: nowIso,
+        resolution_confirmed_by: user.id,
+      })
+      .eq("id", ratingModal.ticket.id)
+      .eq("created_by", user.id);
+
+    if (error) {
+      alert("Não foi possível concluir o chamado. Tente novamente.");
+      setRatingLoading(false);
+      return;
+    }
+
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === ratingModal.ticket.id
+          ? {
+              ...t,
+              status: "closed",
+              closed_at: nowIso,
+              resolution_rating: null,
+              resolution_feedback: null,
+              resolution_confirmed_at: nowIso,
+              resolution_confirmed_by: user.id,
+            }
+          : t,
+      ),
+    );
+
+    closeRatingModal();
   }
 
   function openRatingModal(ticket) {
@@ -447,36 +499,14 @@ export default function EmployeeHome({ user, searchTerm }) {
                           <Button
                             variant="soft"
                             size="sm"
-                            onClick={async () => {
-                              await supabase
-                                .from("tickets")
-                                .update({ status: "closed" })
-                                .eq("id", t.id);
-                              setTickets((prev) =>
-                                prev.map((x) =>
-                                  x.id === t.id ? { ...x, status: "closed" } : x
-                                )
-                              );
-                            }}
+                            onClick={() => openRatingModal(t)}
                           >
-                            Concluir
+                            Avaliar solução
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={async () => {
-                              await supabase
-                                .from("tickets")
-                                .update({ status: "in_progress" })
-                                .eq("id", t.id);
-                              setTickets((prev) =>
-                                prev.map((x) =>
-                                  x.id === t.id
-                                    ? { ...x, status: "in_progress" }
-                                    : x
-                                )
-                              );
-                            }}
+                            onClick={() => handleReopenTicket(t)}
                           >
                             Reabrir
                           </Button>
@@ -596,6 +626,120 @@ export default function EmployeeHome({ user, searchTerm }) {
                 </TicketCard>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {ratingModal.visible && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={closeRatingModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+            zIndex: 2000,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(480px, 100%)",
+              background: "#fff",
+              borderRadius: "20px",
+              boxShadow: "0 24px 60px rgba(15,23,42,0.35)",
+              padding: "24px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+          >
+            <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Avaliar atendimento</h3>
+                <p style={{ margin: "4px 0 0", color: "#4b5563" }}>
+                  Conte para o suporte como foi a resolução do chamado
+                  {ratingModal.ticket?.title ? ` "${ratingModal.ticket.title}"` : ""}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeRatingModal}
+                aria-label="Fechar"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  fontSize: "1.4rem",
+                  cursor: "pointer",
+                  lineHeight: 1,
+                }}
+              >
+                X
+              </button>
+            </header>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span style={{ fontWeight: 500 }}>Nota de 1 a 5</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="1"
+                  value={ratingValue}
+                  onChange={(event) => setRatingValue(Number(event.target.value))}
+                  disabled={ratingLoading}
+                />
+                <span style={{ fontSize: "0.9rem", color: "#4b5563" }}>
+                  Avaliacao selecionada: {ratingValue}/5
+                </span>
+              </label>
+
+              <label style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <span style={{ fontWeight: 500 }}>Feedback (opcional)</span>
+                <TextArea
+                  rows={4}
+                  placeholder="Compartilhe detalhes sobre o atendimento"
+                  value={ratingComment}
+                  onChange={(event) => setRatingComment(event.target.value)}
+                  disabled={ratingLoading}
+                />
+              </label>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "12px",
+                justifyContent: "flex-end",
+              }}
+            >
+              <Button variant="ghost" type="button" onClick={closeRatingModal} disabled={ratingLoading}>
+                Cancelar
+              </Button>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={handleCloseWithoutRating}
+                disabled={ratingLoading}
+              >
+                Concluir sem avaliar
+              </Button>
+              <Button
+                variant="primary"
+                type="button"
+                onClick={handleRatingSubmit}
+                disabled={ratingLoading}
+              >
+                {ratingLoading ? "Enviando..." : "Enviar avaliacao"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
