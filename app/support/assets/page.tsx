@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
 import { SupportAssetsDashboard } from "@/components/support/support-assets-dashboard"
 
@@ -8,9 +9,15 @@ export default async function SupportAssetsPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data: viewerProfile } = user
-    ? await supabase.from("users").select("*").eq("id", user.id).maybeSingle()
-    : { data: null }
+  if (!user) {
+    redirect("/login")
+  }
+
+  const { data: viewerProfile } = await supabase.from("users").select("*").eq("id", user.id).maybeSingle()
+
+  if (!viewerProfile || (viewerProfile.role !== "support" && viewerProfile.role !== "admin")) {
+    redirect("/employee")
+  }
 
   let assetsQuery = supabase
     .from("assets")
@@ -26,7 +33,5 @@ export default async function SupportAssetsPage() {
 
   const { data: assignedAssets } = await assetsQuery
 
-  return (
-    <SupportAssetsDashboard assignedAssets={assignedAssets || []} currentUser={viewerProfile || null} />
-  )
+  return <SupportAssetsDashboard assignedAssets={assignedAssets || []} currentUser={viewerProfile} />
 }

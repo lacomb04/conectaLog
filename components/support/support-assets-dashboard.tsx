@@ -134,7 +134,7 @@ export function SupportAssetsDashboard({ assignedAssets, currentUser }: SupportA
           schema: "public",
           table: "assets",
         },
-        async (payload) => {
+        async (payload: any) => {
           const newOwner = payload.new?.support_owner ?? null
           const previousOwner = payload.old?.support_owner ?? null
 

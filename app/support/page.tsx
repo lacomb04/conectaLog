@@ -8,21 +8,15 @@ export default async function SupportPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data: viewerProfile } = user
-    ? await supabase.from("users").select("*").eq("id", user.id).maybeSingle()
-    : { data: null }
+  if (!user) {
+    redirect("/login")
+  }
 
-  const { data: tickets } = await supabase
-    .from("tickets")
-    .select("*, creator:users!tickets_created_by_fkey(*), assignee:users!tickets_assigned_to_fkey(*)")
-    .order("created_at", { ascending: false })
+  const { data: profile } = await supabase.from("users").select("*").eq("id", user.id).maybeSingle()
 
-  const { data: users } = await supabase.from("users").select("*").in("role", ["support", "admin"])
+  if (!profile || (profile.role !== "support" && profile.role !== "admin")) {
+    redirect("/employee")
+  }
 
-  return (
-    <SupportTicketsDashboard
-      initialTickets={tickets || []}
-      supportUsers={users || []}
-    />
-  )
+  redirect("/support/tickets")
 }

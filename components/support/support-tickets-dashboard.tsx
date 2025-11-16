@@ -79,7 +79,7 @@ export function SupportTicketsDashboard({ initialTickets, supportUsers }: Suppor
           schema: "public",
           table: "tickets",
         },
-        async (payload) => {
+        async (payload: any) => {
           if (payload.eventType === "INSERT") {
             const { data: newTicket } = await supabase
               .from("tickets")

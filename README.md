@@ -36,17 +36,13 @@ Arquivos em `app/employee` e `components/employee` lidam com a experiência do c
 
 Arquivos em `app/support` e `components/support` compõem o painel da equipe de suporte.
 
-- `app/support/layout.tsx`: guarda de rota para suporte/admin. Obtém sessão, carrega perfil e bloqueia acesso de usuários comuns redirecionando-os para `/employee`. Renderiza `SupportNav` e conteúdo.
-- `components/support/support-nav.tsx`: navegação client que inclui Dashboard, Tickets e Analytics. Exibe nome e papel do colaborador (`role` capitalizado) e reutiliza o mesmo fluxo de logout do nav de funcionário.
-- `app/support/page.tsx`: dashboard principal do suporte. Busca todos os tickets com joins de `creator` e `assignee`, além da lista de usuários com `role` em `support|admin`. Inicializa `SupportDashboard` com esses dados.
-- `components/support/support-dashboard.tsx`: painel dinâmico client-side. Mantém tickets em estado local, escuta canal realtime `tickets-changes` do Supabase (INSERT/UPDATE/DELETE) para refletir mudanças instantaneamente e emitir toasts. Disponibiliza:
-  - cards de métricas (total, abertos, em andamento, críticos);
-  - filtros por status e prioridade;
-  - seleção do responsável pelo ticket (força `status: in_progress` ao atribuir);
-  - alteração de status com atualização automática de `resolved_at` e `closed_at`.
-  Cartões listam título, descrição resumida, SLA vencido, autor, tempo relativo e botões de ação.
-- `app/support/tickets/page.tsx`: visão alternativa listando todos os tickets. Reaproveita fetch da rota principal e renderiza `SupportTicketList` com cabeçalho contextual.
-- `components/support/support-ticket-list.tsx`: implementa busca client-side por número, título ou descrição. Renderiza cartões com prioridade, status, autor, responsável e tempo relativo, roteando para `/support/tickets/{id}`.
+`app/support/layout.tsx`: guarda de rota para suporte/admin. Obtém sessão, carrega perfil e bloqueia acesso de usuários comuns redirecionando-os para `/employee`. Renderiza `SupportNav` e conteúdo.
+`components/support/support-nav.tsx`: navegação client que traz atalhos "Chamados", "Ativos" e "Analytics". Destaca a rota ativa com variante do botão, mantém branding e fluxo de logout para suporte/admin.
+`app/support/page.tsx`: pós-validação redireciona imediatamente para `/support/tickets`, mantendo URL raiz como alias da lista de chamados.
+`app/support/tickets/page.tsx`: carrega tickets e lista de agentes (roles `support|admin`) e renderiza `SupportTicketsDashboard` com métricas, filtros e ações em tempo real.
+`components/support/support-tickets-dashboard.tsx`: painel client-side com cards de métricas, filtros por status/prioridade, atribuição e mudança de status com atualização `resolved_at/closed_at`. Escuta canal `tickets-changes` para sincronia instantânea e mostra toasts informativos.
+`app/support/assets/page.tsx`: busca inventário relevante para o usuário autenticado (todos se admin, apenas designados se suporte) e renderiza `SupportAssetsDashboard`.
+`components/support/support-assets-dashboard.tsx`: visão focada em ativos sob responsabilidade, com métricas de inventário, filtros por categoria/status/pesquisa e sincronização realtime via canal `assets-owner-{userId}`.
 - `app/support/tickets/[id]/page.tsx`: detalhe completo para suporte/admin. Reforça validação de permissão, busca ticket + mensagens (inclusive internas) e histórico em `ticket_history`, então renderiza `TicketDetail` com `isSupport={true}` e histórico.
 - `app/support/analytics/page.tsx`: página de BI. Coleta tickets (com joins) e registros agregados de `ticket_stats`, renderizando `AnalyticsDashboard`.
 - `components/support/analytics-dashboard.tsx`: centraliza análises com `useMemo` e Recharts. Calcula distribuições por status/prioridade/categoria, série dos últimos 7 dias, tempos médios de resposta/resolução, cumprimento de SLA e performance por agente (total, resolvidos, tempo médio). Organiza visualizações em abas (Visão Geral, Performance, Agentes) com gráficos de pizza, linhas e barras.
