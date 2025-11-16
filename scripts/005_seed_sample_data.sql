@@ -16,12 +16,12 @@ DECLARE
   ticket3_id uuid;
 BEGIN
   -- Insert sample users
-  INSERT INTO public.users (id, email, full_name, role, department)
+  INSERT INTO public.users (id, email, full_name, role, department, support_level)
   VALUES 
-    (admin_id, 'admin@company.com', 'Admin User', 'admin', 'TI'),
-    (support_id, 'suporte@company.com', 'Agente de Suporte', 'support', 'TI'),
-    (employee1_id, 'joao@company.com', 'João Silva', 'employee', 'Vendas'),
-    (employee2_id, 'maria@company.com', 'Maria Santos', 'employee', 'Marketing');
+    (admin_id, 'admin@company.com', 'Admin User', 'admin', 'TI', NULL),
+    (support_id, 'suporte@company.com', 'Agente de Suporte', 'support', 'TI', 1),
+    (employee1_id, 'joao@company.com', 'João Silva', 'employee', 'Vendas', NULL),
+    (employee2_id, 'maria@company.com', 'Maria Santos', 'employee', 'Marketing', NULL);
 
   -- Insert sample tickets
   INSERT INTO public.tickets (title, description, category, priority, status, requester_id, assigned_to)

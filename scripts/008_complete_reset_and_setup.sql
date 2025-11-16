@@ -223,7 +223,9 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.users;
 DO $$
 DECLARE
   admin_id UUID;
-  support_id UUID;
+  support_level1_id UUID;
+  support_level2_id UUID;
+  support_level3_id UUID;
   employee1_id UUID;
   employee2_id UUID;
   ticket1_id UUID;
@@ -231,20 +233,40 @@ DECLARE
   ticket3_id UUID;
 BEGIN
   -- Criar usuários
-  INSERT INTO public.users (email, full_name, role, department)
-  VALUES ('admin@company.com', 'Admin User', 'admin', 'TI')
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('admin@company.com', 'Admin User', 'admin', 'TI', NULL)
   RETURNING id INTO admin_id;
   
-  INSERT INTO public.users (email, full_name, role, department)
-  VALUES ('suporte@company.com', 'Agente de Suporte', 'support', 'TI')
-  RETURNING id INTO support_id;
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('suporte.n1@company.com', 'Agente Suporte Nível 1', 'support', 'TI', 1)
+  RETURNING id INTO support_level1_id;
+
+  -- Segundo agente nível 1 para testes
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('suporte.backup.n1@company.com', 'Backup Suporte Nível 1', 'support', 'TI', 1);
   
-  INSERT INTO public.users (email, full_name, role, department)
-  VALUES ('joao@company.com', 'João Silva', 'employee', 'Vendas')
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('suporte.n2@company.com', 'Especialista Suporte Nível 2', 'support', 'TI', 2)
+  RETURNING id INTO support_level2_id;
+
+  -- Segundo agente nível 2
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('suporte.backup.n2@company.com', 'Backup Suporte Nível 2', 'support', 'TI', 2);
+
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('suporte.n3@company.com', 'Analista Suporte Nível 3', 'support', 'TI', 3)
+  RETURNING id INTO support_level3_id;
+
+  -- Segundo agente nível 3
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('suporte.backup.n3@company.com', 'Backup Suporte Nível 3', 'support', 'TI', 3);
+  
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('joao@company.com', 'João Silva', 'employee', 'Vendas', NULL)
   RETURNING id INTO employee1_id;
   
-  INSERT INTO public.users (email, full_name, role, department)
-  VALUES ('maria@company.com', 'Maria Santos', 'employee', 'Marketing')
+  INSERT INTO public.users (email, full_name, role, department, support_level)
+  VALUES ('maria@company.com', 'Maria Santos', 'employee', 'Marketing', NULL)
   RETURNING id INTO employee2_id;
   
   -- Criar tickets de exemplo
@@ -256,7 +278,7 @@ BEGIN
     'high',
     'hardware',
     employee1_id,
-    support_id
+    support_level1_id
   )
   RETURNING id INTO ticket1_id;
   
@@ -268,7 +290,7 @@ BEGIN
     'medium',
     'access',
     employee2_id,
-    support_id
+    support_level1_id
   )
   RETURNING id INTO ticket2_id;
   
@@ -287,16 +309,16 @@ BEGIN
   INSERT INTO public.messages (ticket_id, user_id, message, is_internal)
   VALUES 
     (ticket1_id, employee1_id, 'Preciso de ajuda urgente com isso!', false),
-    (ticket1_id, support_id, 'Vou verificar o problema agora.', false),
-    (ticket1_id, support_id, 'Verificar se é problema de fonte de alimentação', true),
+    (ticket1_id, support_level1_id, 'Vou verificar o problema agora.', false),
+    (ticket1_id, support_level1_id, 'Verificar se é problema de fonte de alimentação', true),
     (ticket2_id, employee2_id, 'Quando posso ter acesso?', false),
-    (ticket2_id, support_id, 'Estou criando seu usuário agora.', false);
+    (ticket2_id, support_level1_id, 'Estou criando seu usuário agora.', false);
   
   -- Criar histórico de exemplo
   INSERT INTO public.ticket_history (ticket_id, user_id, action, old_value, new_value)
   VALUES 
-    (ticket2_id, support_id, 'status_changed', 'open', 'in_progress'),
-    (ticket2_id, support_id, 'assigned_to_changed', NULL, support_id::TEXT);
+    (ticket2_id, support_level1_id, 'status_changed', 'open', 'in_progress'),
+    (ticket2_id, support_level1_id, 'assigned_to_changed', NULL, support_level1_id::TEXT);
     
 END $$;
 
@@ -306,6 +328,8 @@ END $$;
 -- Banco de dados configurado com sucesso!
 -- Você pode fazer login com qualquer um dos emails:
 -- - admin@company.com (Admin)
--- - suporte@company.com (Suporte)
+-- - suporte.n1@company.com (Suporte Nível 1)
+-- - suporte.n2@company.com (Suporte Nível 2)
+-- - suporte.n3@company.com (Suporte Nível 3)
 -- - joao@company.com (Funcionário)
 -- - maria@company.com (Funcionário)

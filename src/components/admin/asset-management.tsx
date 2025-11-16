@@ -70,11 +70,14 @@ type SupportUser = {
   id: string;
   full_name: string;
   email: string;
+  support_level: number | null;
+  role?: string | null;
 };
 type OwnerInfo = {
   full_name: string | null;
   email: string | null;
   role?: string | null;
+  support_level?: number | null;
 };
 type CurrentUser = {
   id: string;
@@ -105,6 +108,7 @@ type AssetRecord = {
     full_name?: string | null;
     email?: string | null;
     role?: string | null;
+    support_level?: number | null;
   } | null;
 };
 type FiltersState = {
@@ -837,6 +841,10 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                   : ownerProfile.email || null,
               email: ownerProfile.email || null,
               role: ownerProfile.role || null,
+              support_level:
+                typeof ownerProfile.support_level === "number"
+                  ? ownerProfile.support_level
+                  : null,
             };
           }
           return normalizedItem;
@@ -849,16 +857,23 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           prev.forEach((user) => combined.set(user.id, user));
           normalized.forEach((asset) => {
             const owner = asset.support_owner_profile;
-            if (owner?.id && !combined.has(owner.id)) {
-              combined.set(owner.id, {
-                id: owner.id,
-                full_name:
-                  (typeof owner.full_name === "string" && owner.full_name.trim()) ||
-                  owner.email ||
-                  "Sem nome",
-                email: owner.email || "",
-              });
+            if (!owner?.id) {
+              return;
             }
+            const existing = combined.get(owner.id);
+            combined.set(owner.id, {
+              id: owner.id,
+              full_name:
+                (typeof owner.full_name === "string" && owner.full_name.trim()) ||
+                owner.email ||
+                "Sem nome",
+              email: owner.email || "",
+              support_level:
+                typeof owner.support_level === "number"
+                  ? owner.support_level
+                  : existing?.support_level ?? null,
+              role: owner.role || existing?.role || null,
+            });
           });
           return Array.from(combined.values()).sort((a, b) =>
             a.full_name.localeCompare(b.full_name)

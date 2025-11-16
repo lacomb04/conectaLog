@@ -88,6 +88,7 @@ type RequesterProfile = {
   role: string;
   full_name?: string | null;
   email?: string | null;
+  support_level?: number | null;
 };
 
 async function requireSupabaseRequester(
@@ -127,7 +128,7 @@ async function requireSupabaseRequester(
 
       const { data: fetchedProfile, error: profileError } = await supabaseAdmin
         .from("users")
-        .select("id, role, full_name, email")
+        .select("id, role, full_name, email, support_level")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -140,7 +141,11 @@ async function requireSupabaseRequester(
         return;
       }
 
-      profile = { ...fetchedProfile, role: normalizedRole } as RequesterProfile;
+      profile = {
+        ...fetchedProfile,
+        role: normalizedRole,
+        support_level: fetchedProfile?.support_level ?? null,
+      } as RequesterProfile;
     } catch (cause: any) {
       console.error(
         "[proxy] Falha ao validar sessão Supabase:",
@@ -161,7 +166,7 @@ async function requireSupabaseRequester(
     try {
       const { data: fetchedProfile, error } = await supabaseAdmin
         .from("users")
-        .select("id, role, full_name, email")
+        .select("id, role, full_name, email, support_level")
         .eq("id", headerUserId)
         .maybeSingle();
 
@@ -183,7 +188,11 @@ async function requireSupabaseRequester(
         return;
       }
 
-      profile = { ...fetchedProfile, role: normalizedRole } as RequesterProfile;
+      profile = {
+        ...fetchedProfile,
+        role: normalizedRole,
+        support_level: fetchedProfile?.support_level ?? null,
+      } as RequesterProfile;
     } catch (cause: any) {
       console.error(
         "[proxy] Falha ao validar cabeçalho de usuário:",
@@ -214,7 +223,7 @@ app.get("/api/assets", requireSupabaseRequester, async (req, res) => {
     let query = supabaseAdmin
       .from("assets")
       .select(
-        "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)"
+        "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role, support_level)"
       )
       .order("category", { ascending: true })
       .order("name", { ascending: true });
@@ -259,7 +268,7 @@ app.post("/api/assets", requireSupabaseRequester, async (req, res) => {
       .from("assets")
       .insert(payload)
       .select(
-        "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)"
+        "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role, support_level)"
       )
       .single();
 
@@ -424,7 +433,7 @@ app.patch("/api/assets", requireSupabaseRequester, async (req, res) => {
       .update(updates)
       .eq("id", assetId)
       .select(
-        "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)"
+        "*, support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role, support_level)"
       )
       .maybeSingle();
 
