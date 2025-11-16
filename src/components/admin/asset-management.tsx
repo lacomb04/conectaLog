@@ -867,6 +867,51 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       };
 
       const loadFromSupabase = async () => {
+        const fallbackUser = currentUser && currentUser.id ? currentUser : null;
+        const fallbackRole = fallbackUser?.role
+          ? String(fallbackUser.role).toLowerCase()
+          : null;
+
+        const normalizedRole =
+          fallbackRole === "support" ? "support" : "admin";
+
+        const tryRpc = async () => {
+          try {
+            const { data, error } = await supabase.rpc(
+              "rpc_fetch_assets_dashboard",
+              {
+                p_requester: fallbackUser?.id ?? null,
+                p_role: normalizedRole,
+              }
+            );
+
+            if (error) {
+              const message = String(error.message || "").toLowerCase();
+              if (
+                message.includes("rpc_fetch_assets_dashboard") ||
+                message.includes("does not exist")
+              ) {
+                return false;
+              }
+              throw error;
+            }
+
+            applyAssets(Array.isArray(data) ? data : []);
+            return true;
+          } catch (cause) {
+            console.warn(
+              "[AssetManagement] fallback Supabase RPC:",
+              cause
+            );
+            return false;
+          }
+        };
+
+        const rpcLoaded = await tryRpc();
+        if (rpcLoaded) {
+          return true;
+        }
+
         try {
           let query = supabase
             .from("assets")
@@ -894,11 +939,6 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
             )
             .order("category", { ascending: true })
             .order("name", { ascending: true });
-
-          const fallbackUser = currentUser && currentUser.id ? currentUser : null;
-          const fallbackRole = fallbackUser?.role
-            ? String(fallbackUser.role).toLowerCase()
-            : null;
 
           if (fallbackRole === "support" && fallbackUser?.id) {
             query = query.eq("support_owner", fallbackUser.id);
