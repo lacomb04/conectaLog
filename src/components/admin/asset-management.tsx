@@ -821,6 +821,103 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
       }
       setErrorMessage("");
       setTableMessage(null);
+
+      const applyAssets = (rows: any[]) => {
+        const ownersBuffer: Record<string, OwnerInfo> = {};
+
+        const normalized = rows.map((item) => {
+          const normalizedItem = normalizeAsset(item);
+          const ownerProfile = normalizedItem.support_owner_profile;
+          if (ownerProfile?.id) {
+            ownersBuffer[ownerProfile.id] = {
+              full_name:
+                typeof ownerProfile.full_name === "string" &&
+                ownerProfile.full_name.trim()
+                  ? ownerProfile.full_name.trim()
+                  : ownerProfile.email || null,
+              email: ownerProfile.email || null,
+              role: ownerProfile.role || null,
+            };
+          }
+          return normalizedItem;
+        });
+
+        setAssets(normalized);
+        setOwnersMap(ownersBuffer);
+        setSupportUsers((prev) => {
+          const combined = new Map<string, SupportUser>();
+          prev.forEach((user) => combined.set(user.id, user));
+          normalized.forEach((asset) => {
+            const owner = asset.support_owner_profile;
+            if (owner?.id && !combined.has(owner.id)) {
+              combined.set(owner.id, {
+                id: owner.id,
+                full_name:
+                  (typeof owner.full_name === "string" && owner.full_name.trim()) ||
+                  owner.email ||
+                  "Sem nome",
+                email: owner.email || "",
+              });
+            }
+          });
+          return Array.from(combined.values()).sort((a, b) =>
+            a.full_name.localeCompare(b.full_name)
+          );
+        });
+      };
+
+      const loadFromSupabase = async () => {
+        try {
+          let query = supabase
+            .from("assets")
+            .select(
+              [
+                "id",
+                "asset_code",
+                "name",
+                "category",
+                "subcategory",
+                "status",
+                "lifecycle_stage",
+                "quantity",
+                "acquisition_date",
+                "last_maintenance_date",
+                "next_maintenance_date",
+                "warranty_expires_at",
+                "license_expiry",
+                "description",
+                "location",
+                "inventoried",
+                "support_owner",
+                "support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)",
+              ].join(",")
+            )
+            .order("category", { ascending: true })
+            .order("name", { ascending: true });
+
+          const fallbackUser = currentUser && currentUser.id ? currentUser : null;
+          const fallbackRole = fallbackUser?.role
+            ? String(fallbackUser.role).toLowerCase()
+            : null;
+
+          if (fallbackRole === "support" && fallbackUser?.id) {
+            query = query.eq("support_owner", fallbackUser.id);
+          }
+
+          const { data, error } = await query;
+          if (error) {
+            throw error;
+          }
+          applyAssets(Array.isArray(data) ? data : []);
+          return true;
+        } catch (cause) {
+          console.warn("[AssetManagement] fallback Supabase fetch:", cause);
+          setErrorMessage("Não foi possível carregar os ativos pelo Supabase.");
+          setAssets([]);
+          return false;
+        }
+      };
+
       try {
         const { data: sessionData, error: sessionError } =
           await supabase.auth.getSession();
@@ -868,8 +965,10 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           }
           const message = detail?.error || `Status ${response.status}`;
           console.warn("[AssetManagement] fetchAssets:", message);
-          setErrorMessage("Não foi possível carregar os ativos: " + message);
-          setAssets([]);
+          const fetched = await loadFromSupabase();
+          if (!fetched) {
+            setErrorMessage("Não foi possível carregar os ativos: " + message);
+          }
           return;
         }
 
@@ -881,37 +980,16 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
         }
 
         const rawData = payload?.data;
-        const items: AssetRecord[] = Array.isArray(rawData)
-          ? (rawData as AssetRecord[])
-          : [];
-        const ownersBuffer: Record<string, OwnerInfo> = {};
-
-        const normalized = items.map((item) => {
-          const normalizedItem = normalizeAsset(item);
-          const ownerProfile = normalizedItem.support_owner_profile;
-          if (ownerProfile?.id) {
-            ownersBuffer[ownerProfile.id] = {
-              full_name:
-                typeof ownerProfile.full_name === "string" &&
-                ownerProfile.full_name.trim()
-                  ? ownerProfile.full_name.trim()
-                  : ownerProfile.email || null,
-              email: ownerProfile.email || null,
-              role: ownerProfile.role || null,
-            };
-          }
-          return normalizedItem;
-        });
-
-        if (Object.keys(ownersBuffer).length) {
-          setOwnersMap((prev) => ({ ...prev, ...ownersBuffer }));
-        }
-
-        setAssets(normalized);
+        const items = Array.isArray(rawData) ? rawData : [];
+        applyAssets(items);
       } catch (cause) {
-        console.warn("[AssetManagement] fetchAssets: unexpected", cause);
-        setErrorMessage("Falha inesperada ao carregar os ativos.");
-        setAssets([]);
+        console.warn("[AssetManagement] fetchAssets unexpected:", cause);
+        const fetched = await loadFromSupabase();
+        if (!fetched) {
+          setErrorMessage(
+            "Não foi possível carregar os ativos. Tente novamente em instantes."
+          );
+        }
       } finally {
         if (isInitial) {
           setLoading(false);
@@ -927,7 +1005,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     try {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, email, role")
+        .select("id, full_name, email")
         .eq("role", "support")
         .order("full_name", { ascending: true });
 
@@ -968,15 +1046,12 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     fetchSupportUsers();
   }, [fetchAssets, fetchSupportUsers]);
 
-  useEffect(() => {
-    setTableMessage(null);
-  }, [filters]);
-
   const handleRefresh = useCallback(() => {
-    if (!refreshing) {
-      fetchAssets("refresh");
-    }
-  }, [fetchAssets, refreshing]);
+    setTableMessage(null);
+    setInlineError(null);
+    setErrorMessage("");
+    fetchAssets("refresh");
+  }, [fetchAssets]);
 
   const describeNextAction = useCallback((asset: AssetRecord) => {
     if (asset.license_expiry) {
