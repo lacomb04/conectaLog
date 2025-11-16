@@ -561,14 +561,18 @@ function SortableTicket({
  * @param {{
  *   user: any,
  *   searchTerm?: string,
+ *   section?: string,
  *   extraHeaderActions?: import("react").ReactNode | null
  * }} props
  */
 export default function SupportDashboard({
   user,
   searchTerm = "",
+  section = "tickets",
   extraHeaderActions = null
 }) {
+  const sectionKey = (section || "tickets").toString();
+  const isAssetsView = sectionKey === "assets";
   const [tickets, setTickets] = useState([]);
   const [usersMap, setUsersMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -1110,6 +1114,360 @@ export default function SupportDashboard({
     });
   }
 
+  const overlayContent = (
+    <>
+      {showTeamChat && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 120,
+            right: 32,
+            zIndex: 1300,
+          }}
+        >
+          <TeamChatPanel user={user} onClose={() => setShowTeamChat(false)} />
+        </div>
+      )}
+      {showAIChat && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 210,
+            right: 32,
+            zIndex: 1300,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              color: "#556",
+              textAlign: "right",
+              marginBottom: 6,
+            }}
+          >
+            Assistente IA para suporte (não cria chamados)
+          </div>
+          <ConectaBotChat
+            user={user}
+            allowTicketCreation={false}
+            onTicketCreated={() => {
+              setShowAIChat(false);
+              setFilter((f) => ({ ...f }));
+            }}
+            onClose={() => setShowAIChat(false)}
+          />
+        </div>
+      )}
+      <ChatPanel $open={showChatPanel}>
+        <div className="stack-between">
+          <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
+            Conversas atendidas
+          </h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowChatPanel(false)}
+          >
+            Fechar
+          </Button>
+        </div>
+
+        {myChatTickets.length === 0 ? (
+          <p style={{ color: "var(--muted)", margin: 0 }}>
+            Você ainda não respondeu nenhum chamado.
+          </p>
+        ) : (
+          <ChatList>
+            {myChatTickets.map((ticket) => {
+              const visual = priorityVisual[ticket.priority] || {
+                dot: "#e5e7eb",
+                label: "—",
+              };
+              const lastUpdate = new Date(
+                ticket.updated_at || ticket.created_at
+              ).toLocaleString();
+              return (
+                <ChatRow key={ticket.id}>
+                  <ChatDot color={visual.dot} />
+                  <ChatBody>
+                    <ChatTitle title={ticket.title}>{ticket.title}</ChatTitle>
+                    <ChatMeta>
+                      {visual.label}
+                      <span>{lastUpdate}</span>
+                    </ChatMeta>
+                  </ChatBody>
+                  <ChatStatus tone="neutral">{ticket.status}</ChatStatus>
+                  <Button
+                    as={Link}
+                    to={`/ticket/${ticket.id}`}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowChatPanel(false)}
+                    style={{ padding: "6px 10px" }}
+                  >
+                    Abrir
+                  </Button>
+                </ChatRow>
+              );
+            })}
+          </ChatList>
+        )}
+      </ChatPanel>
+      <ChatDock buttons={chatButtons} />
+    </>
+  );
+
+  if (isAssetsView) {
+    return (
+      <div className="page-shell">
+        <div
+          className="stack-between section"
+          style={{ alignItems: "flex-start" }}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <h1>Ativos de TI</h1>
+            <p style={{ margin: 0, color: "var(--muted)" }}>
+              Visualize manutenções, licenças e pendências dos ativos sob sua responsabilidade.
+            </p>
+          </div>
+        </div>
+
+        <Card style={{ marginTop: "var(--space-5)" }}>
+          <div
+            className="stack-between"
+            style={{ alignItems: "flex-start", gap: "var(--space-3)" }}
+          >
+            <div>
+              <h2 style={{ margin: 0 }}>Ativos de TI sob sua responsabilidade</h2>
+              <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
+                Visualize manutenções, licenças e pendências de inventário dos ativos atribuídos.
+              </p>
+            </div>
+          </div>
+
+          {assetsError && <AssetError>{assetsError}</AssetError>}
+
+          {assetsLoading ? (
+            <AssetEmpty>Carregando ativos atribuídos...</AssetEmpty>
+          ) : !assignedAssets.length ? (
+            <AssetEmpty>Você ainda não possui ativos atribuídos.</AssetEmpty>
+          ) : (
+            <>
+              <AssetMetricsGrid>
+                <AssetMetric>
+                  <AssetMetricLabel>Total atribuídos</AssetMetricLabel>
+                  <AssetMetricValue>{assetIndicators.total}</AssetMetricValue>
+                </AssetMetric>
+                <AssetMetric>
+                  <AssetMetricLabel>Inventariados</AssetMetricLabel>
+                  <AssetMetricValue>{assetIndicators.inventoried}</AssetMetricValue>
+                </AssetMetric>
+                <AssetMetric>
+                  <AssetMetricLabel>Inventário pendente</AssetMetricLabel>
+                  <AssetMetricValue $alert={assetIndicators.pendingInventory > 0}>
+                    {assetIndicators.pendingInventory}
+                  </AssetMetricValue>
+                </AssetMetric>
+                <AssetMetric>
+                  <AssetMetricLabel>Licenças a vencer (30 dias)</AssetMetricLabel>
+                  <AssetMetricValue $alert={assetIndicators.expiringLicense > 0}>
+                    {assetIndicators.expiringLicense}
+                  </AssetMetricValue>
+                </AssetMetric>
+                <AssetMetric>
+                  <AssetMetricLabel>Manutenções em atraso</AssetMetricLabel>
+                  <AssetMetricValue $alert={assetIndicators.maintenanceDue > 0}>
+                    {assetIndicators.maintenanceDue}
+                  </AssetMetricValue>
+                </AssetMetric>
+                <AssetMetric>
+                  <AssetMetricLabel>Obsoletos</AssetMetricLabel>
+                  <AssetMetricValue $alert={assetIndicators.obsolete > 0}>
+                    {assetIndicators.obsolete}
+                  </AssetMetricValue>
+                </AssetMetric>
+              </AssetMetricsGrid>
+
+              <AssetFiltersRow>
+                <div>
+                  <label
+                    htmlFor="support-asset-search"
+                    style={{
+                      display: "block",
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Buscar
+                  </label>
+                  <Input
+                    id="support-asset-search"
+                    placeholder="Código, ativo ou palavra-chave"
+                    value={assetSearch}
+                    onChange={(event) => setAssetSearch(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="support-asset-category"
+                    style={{
+                      display: "block",
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Categoria
+                  </label>
+                  <Select
+                    id="support-asset-category"
+                    value={assetCategoryFilter}
+                    onChange={(event) => setAssetCategoryFilter(event.target.value)}
+                  >
+                    <option value="all">Todas</option>
+                    {Object.entries(ASSET_CATEGORY_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <label
+                    htmlFor="support-asset-status"
+                    style={{
+                      display: "block",
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      marginBottom: 6,
+                    }}
+                  >
+                    Status
+                  </label>
+                  <Select
+                    id="support-asset-status"
+                    value={assetStatusFilter}
+                    onChange={(event) => setAssetStatusFilter(event.target.value)}
+                  >
+                    <option value="all">Todos</option>
+                    {Object.entries(ASSET_STATUS_META).map(([value, meta]) => (
+                      <option key={value} value={value}>
+                        {meta.label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </AssetFiltersRow>
+
+              {processedAssets.length > 0 && (
+                <div style={{ marginTop: "var(--space-3)" }}>
+                  {assetsNeedingCare.length > 0 ? (
+                    <Badge tone="warning">
+                      {assetsNeedingCare.length === 1
+                        ? "1 ativo precisa da sua atenção"
+                        : `${assetsNeedingCare.length} ativos precisam da sua atenção`}
+                    </Badge>
+                  ) : (
+                    <Badge tone="success">Nenhum alerta crítico entre os filtros atuais</Badge>
+                  )}
+                </div>
+              )}
+
+              {processedAssets.length === 0 ? (
+                <AssetEmpty>
+                  Nenhum ativo corresponde aos filtros selecionados.
+                </AssetEmpty>
+              ) : (
+                <AssetList>
+                  {processedAssets.map(({ asset, flags }) => {
+                    const statusMeta =
+                      ASSET_STATUS_META[asset.status] || {
+                        tone: "neutral",
+                        label: asset.status,
+                      };
+                    const flagged = flags.length > 0;
+                    return (
+                      <AssetCardRow
+                        key={asset.id}
+                        style={
+                          flagged
+                            ? {
+                                borderColor: "#f97316",
+                                boxShadow: "0 0 0 3px rgba(248, 113, 113, 0.12)",
+                              }
+                            : undefined
+                        }
+                      >
+                        <AssetInfoBlock>
+                          <span style={{ fontWeight: 700, fontSize: "1rem" }}>
+                            {asset.asset_code} • {asset.name}
+                          </span>
+                          <AssetMetaText>
+                            {(ASSET_CATEGORY_LABELS[asset.category] || asset.category) +
+                              (asset.location ? ` • ${asset.location}` : "")}
+                          </AssetMetaText>
+                          <AssetMetaText>
+                            Ciclo de vida: {ASSET_LIFECYCLE_LABELS[asset.lifecycle_stage] || asset.lifecycle_stage}
+                          </AssetMetaText>
+                        </AssetInfoBlock>
+
+                        <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
+                          <AssetBadgeRow>
+                            <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+                            <Badge tone={asset.inventoried ? "success" : "warning"}>
+                              {asset.inventoried ? "Inventariado" : "Inventário pendente"}
+                            </Badge>
+                          </AssetBadgeRow>
+                          {flags.length > 0 && (
+                            <AssetFlagsRow>
+                              {flags.map((flag, index) => (
+                                <Badge
+                                  key={`${asset.id}-${index}`}
+                                  tone={
+                                    flag.includes("atraso") || flag.includes("vencid")
+                                      ? "danger"
+                                      : "warning"
+                                  }
+                                >
+                                  {flag}
+                                </Badge>
+                              ))}
+                            </AssetFlagsRow>
+                          )}
+                        </div>
+
+                        <AssetActionBlock>
+                          <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>
+                            Próxima ação
+                          </span>
+                          <span>{nextAssetAction(asset)}</span>
+                          <AssetMetaText>
+                            Última manutenção: {formatAssetDate(asset.last_maintenance_date)}
+                          </AssetMetaText>
+                          <AssetMetaText>
+                            Próxima manutenção: {formatAssetDate(asset.next_maintenance_date)}
+                          </AssetMetaText>
+                          {asset.warranty_expires_at && (
+                            <AssetMetaText>
+                              Garantia: {formatAssetDate(asset.warranty_expires_at)}
+                            </AssetMetaText>
+                          )}
+                        </AssetActionBlock>
+                      </AssetCardRow>
+                    );
+                  })}
+                </AssetList>
+              )}
+            </>
+          )}
+        </Card>
+
+        {overlayContent}
+      </div>
+    );
+  }
+
   return (
     <div className="page-shell">
       <div
@@ -1183,237 +1541,6 @@ export default function SupportDashboard({
           </Select>
         </div>
       </div>
-
-      <Card style={{ marginTop: "var(--space-5)" }}>
-        <div
-          className="stack-between"
-          style={{ alignItems: "flex-start", gap: "var(--space-3)" }}
-        >
-          <div>
-            <h2 style={{ margin: 0 }}>Ativos de TI sob sua responsabilidade</h2>
-            <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-              Visualize manutenções, licenças e pendências de inventário dos ativos atribuídos.
-            </p>
-          </div>
-        </div>
-
-        {assetsError && <AssetError>{assetsError}</AssetError>}
-
-        {assetsLoading ? (
-          <AssetEmpty>Carregando ativos atribuídos...</AssetEmpty>
-        ) : !assignedAssets.length ? (
-          <AssetEmpty>Você ainda não possui ativos atribuídos.</AssetEmpty>
-        ) : (
-          <>
-            <AssetMetricsGrid>
-              <AssetMetric>
-                <AssetMetricLabel>Total atribuídos</AssetMetricLabel>
-                <AssetMetricValue>{assetIndicators.total}</AssetMetricValue>
-              </AssetMetric>
-              <AssetMetric>
-                <AssetMetricLabel>Inventariados</AssetMetricLabel>
-                <AssetMetricValue>{assetIndicators.inventoried}</AssetMetricValue>
-              </AssetMetric>
-              <AssetMetric>
-                <AssetMetricLabel>Inventário pendente</AssetMetricLabel>
-                <AssetMetricValue $alert={assetIndicators.pendingInventory > 0}>
-                  {assetIndicators.pendingInventory}
-                </AssetMetricValue>
-              </AssetMetric>
-              <AssetMetric>
-                <AssetMetricLabel>Licenças a vencer (30 dias)</AssetMetricLabel>
-                <AssetMetricValue $alert={assetIndicators.expiringLicense > 0}>
-                  {assetIndicators.expiringLicense}
-                </AssetMetricValue>
-              </AssetMetric>
-              <AssetMetric>
-                <AssetMetricLabel>Manutenções em atraso</AssetMetricLabel>
-                <AssetMetricValue $alert={assetIndicators.maintenanceDue > 0}>
-                  {assetIndicators.maintenanceDue}
-                </AssetMetricValue>
-              </AssetMetric>
-              <AssetMetric>
-                <AssetMetricLabel>Obsoletos</AssetMetricLabel>
-                <AssetMetricValue $alert={assetIndicators.obsolete > 0}>
-                  {assetIndicators.obsolete}
-                </AssetMetricValue>
-              </AssetMetric>
-            </AssetMetricsGrid>
-
-            <AssetFiltersRow>
-              <div>
-                <label
-                  htmlFor="support-asset-search"
-                  style={{
-                    display: "block",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    marginBottom: 6,
-                  }}
-                >
-                  Buscar
-                </label>
-                <Input
-                  id="support-asset-search"
-                  placeholder="Código, ativo ou palavra-chave"
-                  value={assetSearch}
-                  onChange={(event) => setAssetSearch(event.target.value)}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor="support-asset-category"
-                  style={{
-                    display: "block",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    marginBottom: 6,
-                  }}
-                >
-                  Categoria
-                </label>
-                <Select
-                  id="support-asset-category"
-                  value={assetCategoryFilter}
-                  onChange={(event) => setAssetCategoryFilter(event.target.value)}
-                >
-                  <option value="all">Todas</option>
-                  {Object.entries(ASSET_CATEGORY_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <label
-                  htmlFor="support-asset-status"
-                  style={{
-                    display: "block",
-                    fontSize: "0.78rem",
-                    fontWeight: 600,
-                    marginBottom: 6,
-                  }}
-                >
-                  Status
-                </label>
-                <Select
-                  id="support-asset-status"
-                  value={assetStatusFilter}
-                  onChange={(event) => setAssetStatusFilter(event.target.value)}
-                >
-                  <option value="all">Todos</option>
-                  {Object.entries(ASSET_STATUS_META).map(([value, meta]) => (
-                    <option key={value} value={value}>
-                      {meta.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </AssetFiltersRow>
-
-            {processedAssets.length > 0 && (
-              <div style={{ marginTop: "var(--space-3)" }}>
-                {assetsNeedingCare.length > 0 ? (
-                  <Badge tone="warning">
-                    {assetsNeedingCare.length === 1
-                      ? "1 ativo precisa da sua atenção"
-                      : `${assetsNeedingCare.length} ativos precisam da sua atenção`}
-                  </Badge>
-                ) : (
-                  <Badge tone="success">Nenhum alerta crítico entre os filtros atuais</Badge>
-                )}
-              </div>
-            )}
-
-            {processedAssets.length === 0 ? (
-              <AssetEmpty>
-                Nenhum ativo corresponde aos filtros selecionados.
-              </AssetEmpty>
-            ) : (
-              <AssetList>
-                {processedAssets.map(({ asset, flags }) => {
-                  const statusMeta =
-                    ASSET_STATUS_META[asset.status] || {
-                      tone: "neutral",
-                      label: asset.status,
-                    };
-                  const flagged = flags.length > 0;
-                  return (
-                    <AssetCardRow
-                      key={asset.id}
-                      style={
-                        flagged
-                          ? {
-                              borderColor: "#f97316",
-                              boxShadow: "0 0 0 3px rgba(248, 113, 113, 0.12)",
-                            }
-                          : undefined
-                      }
-                    >
-                      <AssetInfoBlock>
-                        <span style={{ fontWeight: 700, fontSize: "1rem" }}>
-                          {asset.asset_code} • {asset.name}
-                        </span>
-                        <AssetMetaText>
-                          {(ASSET_CATEGORY_LABELS[asset.category] || asset.category) +
-                            (asset.location ? ` • ${asset.location}` : "")}
-                        </AssetMetaText>
-                        <AssetMetaText>
-                          Ciclo de vida: {ASSET_LIFECYCLE_LABELS[asset.lifecycle_stage] || asset.lifecycle_stage}
-                        </AssetMetaText>
-                      </AssetInfoBlock>
-
-                      <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
-                        <AssetBadgeRow>
-                          <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
-                          <Badge tone={asset.inventoried ? "success" : "warning"}>
-                            {asset.inventoried ? "Inventariado" : "Inventário pendente"}
-                          </Badge>
-                        </AssetBadgeRow>
-                        {flags.length > 0 && (
-                          <AssetFlagsRow>
-                            {flags.map((flag, index) => (
-                              <Badge
-                                key={`${asset.id}-${index}`}
-                                tone={
-                                  flag.includes("atraso") || flag.includes("vencid")
-                                    ? "danger"
-                                    : "warning"
-                                }
-                              >
-                                {flag}
-                              </Badge>
-                            ))}
-                          </AssetFlagsRow>
-                        )}
-                      </div>
-
-                      <AssetActionBlock>
-                        <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>
-                          Próxima ação
-                        </span>
-                        <span>{nextAssetAction(asset)}</span>
-                        <AssetMetaText>
-                          Última manutenção: {formatAssetDate(asset.last_maintenance_date)}
-                        </AssetMetaText>
-                        <AssetMetaText>
-                          Próxima manutenção: {formatAssetDate(asset.next_maintenance_date)}
-                        </AssetMetaText>
-                        {asset.warranty_expires_at && (
-                          <AssetMetaText>
-                            Garantia: {formatAssetDate(asset.warranty_expires_at)}
-                          </AssetMetaText>
-                        )}
-                      </AssetActionBlock>
-                    </AssetCardRow>
-                  );
-                })}
-              </AssetList>
-            )}
-          </>
-        )}
-      </Card>
 
       {loading ? (
         <p>Carregando...</p>
@@ -1626,104 +1753,7 @@ export default function SupportDashboard({
           </StyledTable>
         </Card>
       )}
-      {showTeamChat && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 120,
-            right: 32,
-            zIndex: 1300,
-          }}
-        >
-          <TeamChatPanel user={user} onClose={() => setShowTeamChat(false)} />
-        </div>
-      )}
-      {showAIChat && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 210,
-            right: 32,
-            zIndex: 1300,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              color: "#556",
-              textAlign: "right",
-              marginBottom: 6,
-            }}
-          >
-            Assistente IA para suporte (não cria chamados)
-          </div>
-          <ConectaBotChat
-            user={user}
-            allowTicketCreation={false}
-            onTicketCreated={() => {
-              setShowAIChat(false);
-              setFilter((f) => ({ ...f }));
-            }}
-            onClose={() => setShowAIChat(false)}
-          />
-        </div>
-      )}
-      <ChatPanel $open={showChatPanel}>
-        <div className="stack-between">
-          <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
-            Conversas atendidas
-          </h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowChatPanel(false)}
-          >
-            Fechar
-          </Button>
-        </div>
-
-        {myChatTickets.length === 0 ? (
-          <p style={{ color: "var(--muted)", margin: 0 }}>
-            Você ainda não respondeu nenhum chamado.
-          </p>
-        ) : (
-          <ChatList>
-            {myChatTickets.map((ticket) => {
-              const visual = priorityVisual[ticket.priority] || {
-                dot: "#e5e7eb",
-                label: "—",
-              };
-              const lastUpdate = new Date(
-                ticket.updated_at || ticket.created_at
-              ).toLocaleString();
-              return (
-                <ChatRow key={ticket.id}>
-                  <ChatDot color={visual.dot} />
-                  <ChatBody>
-                    <ChatTitle title={ticket.title}>{ticket.title}</ChatTitle>
-                    <ChatMeta>
-                      {visual.label}
-                      <span>{lastUpdate}</span>
-                    </ChatMeta>
-                  </ChatBody>
-                  <ChatStatus tone="neutral">{ticket.status}</ChatStatus>
-                  <Button
-                    as={Link}
-                    to={`/ticket/${ticket.id}`}
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowChatPanel(false)}
-                    style={{ padding: "6px 10px" }}
-                  >
-                    Abrir
-                  </Button>
-                </ChatRow>
-              );
-            })}
-          </ChatList>
-        )}
-      </ChatPanel>
-      <ChatDock buttons={chatButtons} />
+      {overlayContent}
     </div>
   );
 }

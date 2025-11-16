@@ -87,6 +87,12 @@ function Shell({ user, setUser }) {
           { to: "/ativos", label: "Ativos" },
           { to: "/bi", label: "Painel BI" },
         ]
+      : user.role === "support"
+      ? [
+          { to: "/support/tickets", label: "Chamados" },
+          { to: "/support/assets", label: "Ativos" },
+          { to: "/support/analytics", label: "Analytics" },
+        ]
       : [];
 
   return (
@@ -117,11 +123,33 @@ function Shell({ user, setUser }) {
           <>
             <Route
               path="/"
-              element={<SupportDashboard user={user} searchTerm={searchTerm} />}
+              element={<Navigate to="/support/tickets" replace />}
             />
+            <Route
+              path="/support"
+              element={<Navigate to="/support/tickets" replace />}
+            />
+            <Route
+              path="/support/tickets"
+              element={
+                <SupportDashboard
+                  user={user}
+                  searchTerm={searchTerm}
+                  section="tickets"
+                />
+              }
+            />
+            <Route
+              path="/support/assets"
+              element={<SupportDashboard user={user} section="assets" />}
+            />
+            <Route
+              path="/support/analytics"
+              element={<BI user={user} />}
+            />
+            <Route path="/bi" element={<Navigate to="/support/analytics" replace />} />
             <Route path="/ticket/:id" element={<TicketDetail user={user} />} />
-            <Route path="/bi" element={<BI user={user} />} />
-            <Route path="*" element={<Navigate to="/" />} />
+            <Route path="*" element={<Navigate to="/support/tickets" replace />} />
           </>
         )}
         {user.role === "admin" && (
