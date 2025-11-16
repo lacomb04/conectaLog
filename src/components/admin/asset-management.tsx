@@ -769,24 +769,39 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                   : ownerProfile.email || null,
               email: ownerProfile.email || null,
               role: ownerProfile.role || null,
+              support_level:
+                typeof ownerProfile.support_level === "number"
+                  ? ownerProfile.support_level
+                  : prev[ownerProfile.id]?.support_level ?? null,
             },
           }));
           setSupportUsers((prev) => {
-            if (prev.some((user) => user.id === ownerProfile.id)) {
-              return prev;
+            const existingIndex = prev.findIndex(
+              (user) => user.id === ownerProfile.id
+            );
+            const nextEntry: SupportUser = {
+              id: ownerProfile.id,
+              full_name:
+                (typeof ownerProfile.full_name === "string" &&
+                  ownerProfile.full_name.trim()) ||
+                ownerProfile.email ||
+                "Sem nome",
+              email: ownerProfile.email || "",
+              support_level:
+                typeof ownerProfile.support_level === "number"
+                  ? ownerProfile.support_level
+                  : null,
+              role: ownerProfile.role || null,
+            };
+            if (existingIndex === -1) {
+              return [...prev, nextEntry];
             }
-            return [
-              ...prev,
-              {
-                id: ownerProfile.id,
-                full_name:
-                  (typeof ownerProfile.full_name === "string" &&
-                    ownerProfile.full_name.trim()) ||
-                  ownerProfile.email ||
-                  "Sem nome",
-                email: ownerProfile.email || "",
-              },
-            ];
+            const next = [...prev];
+            next[existingIndex] = {
+              ...next[existingIndex],
+              ...nextEntry,
+            };
+            return next;
           });
         }
 
@@ -949,7 +964,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                 "location",
                 "inventoried",
                 "support_owner",
-                "support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role)",
+                  "support_owner_profile:users!assets_support_owner_fkey(id, full_name, email, role, support_level)",
               ].join(",")
             )
             .order("category", { ascending: true })
@@ -1060,7 +1075,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
     try {
       const { data, error } = await supabase
         .from("users")
-        .select("id, full_name, email")
+        .select("id, full_name, email, support_level")
         .eq("role", "support")
         .order("full_name", { ascending: true });
 
@@ -1076,6 +1091,9 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
           user.email ||
           "Sem nome",
         email: user.email || "",
+        support_level:
+          typeof user.support_level === "number" ? user.support_level : null,
+        role: "support",
       }));
       setSupportUsers(normalized);
       if (normalized.length) {
@@ -1086,6 +1104,7 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
               full_name: user.full_name || null,
               email: user.email || null,
               role: "support",
+              support_level: user.support_level,
             };
           });
           return next;
@@ -1739,24 +1758,39 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                 : ownerProfile.email || null,
             email: ownerProfile.email || null,
             role: ownerProfile.role || null,
+            support_level:
+              typeof ownerProfile.support_level === "number"
+                ? ownerProfile.support_level
+                : prev[ownerProfile.id]?.support_level ?? null,
           },
         }));
         setSupportUsers((prev) => {
-          if (prev.some((user) => user.id === ownerProfile.id)) {
-            return prev;
+          const existingIndex = prev.findIndex(
+            (user) => user.id === ownerProfile.id
+          );
+          const nextEntry: SupportUser = {
+            id: ownerProfile.id,
+            full_name:
+              (typeof ownerProfile.full_name === "string" &&
+                ownerProfile.full_name.trim()) ||
+              ownerProfile.email ||
+              "Sem nome",
+            email: ownerProfile.email || "",
+            support_level:
+              typeof ownerProfile.support_level === "number"
+                ? ownerProfile.support_level
+                : null,
+            role: ownerProfile.role || null,
+          };
+          if (existingIndex === -1) {
+            return [...prev, nextEntry];
           }
-          return [
-            ...prev,
-            {
-              id: ownerProfile.id,
-              full_name:
-                (typeof ownerProfile.full_name === "string" &&
-                  ownerProfile.full_name.trim()) ||
-                ownerProfile.email ||
-                "Sem nome",
-              email: ownerProfile.email || "",
-            },
-          ];
+          const next = [...prev];
+          next[existingIndex] = {
+            ...next[existingIndex],
+            ...nextEntry,
+          };
+          return next;
         });
       }
 
@@ -2377,6 +2411,11 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                                 null,
                               email: asset.support_owner_profile.email || null,
                               role: asset.support_owner_profile.role || null,
+                              support_level:
+                                typeof asset.support_owner_profile.support_level ===
+                                  "number"
+                                  ? asset.support_owner_profile.support_level
+                                  : null,
                             }
                           : asset.support_owner
                           ? ownersMap[asset.support_owner]
@@ -2399,6 +2438,11 @@ const AssetManagement: React.FC<AssetManagementProps> = ({ currentUser = null })
                                     ownerMeta.email ||
                                     "Responsável atual",
                                   email: ownerMeta.email || "",
+                                  support_level:
+                                    typeof ownerMeta.support_level === "number"
+                                      ? ownerMeta.support_level
+                                      : null,
+                                  role: ownerMeta.role || null,
                                 },
                               ]
                             : supportUsers;

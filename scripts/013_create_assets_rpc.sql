@@ -59,7 +59,8 @@ BEGIN
           'id', u.id,
           'full_name', u.full_name,
           'email', u.email,
-          'role', u.role
+          'role', u.role,
+          'support_level', u.support_level
         )
         ELSE NULL
       END AS support_owner_profile,
@@ -94,7 +95,8 @@ BEGIN
           'id', u.id,
           'full_name', u.full_name,
           'email', u.email,
-          'role', u.role
+          'role', u.role,
+          'support_level', u.support_level
         )
         ELSE NULL
       END AS support_owner_profile,
